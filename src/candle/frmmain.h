@@ -278,6 +278,8 @@ private slots:
 
     void updateHeightMapInterpolationDrawer(bool reset = false);
     void placeVisualizerButtons();
+    void initializeMarlinConnection();
+    void processMarlinPosition(const QString &data);
 
 protected:
     void showEvent(QShowEvent *se);
@@ -425,6 +427,7 @@ private:
     bool m_resetCompleted;
     bool m_aborting;
     bool m_statusReceived;
+    bool m_marlinProtocol;
 
     bool m_heightMapMode;
 

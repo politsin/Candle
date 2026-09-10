@@ -21,6 +21,7 @@
 #include <QSplitter>
 #include <QInputDialog>
 #include <QElapsedTimer>
+#include <QSignalBlocker>
 #include <QtConcurrent/QtConcurrent>
 #include <QClipboard>
 #include <QStyleFactory>
@@ -171,6 +172,7 @@ void frmMain::initVariables()
     m_resetCompleted = true;
     m_aborting = false;
     m_statusReceived = false;
+    m_marlinProtocol = false;
 
     m_deviceState = DeviceUnknown;
     m_senderState = SenderUnknown;
@@ -970,6 +972,22 @@ void frmMain::on_cmdFilePause_clicked(bool checked)
 {
     static SenderState s;
 
+    if (m_marlinProtocol) {
+        if (checked) {
+            // M410 must bypass Candle's normal sender queue. A quick-stop
+            // invalidates the queued motion sequence, so this is a safe stop,
+            // not a resumable GRBL feed hold.
+            m_currentConnection->send("M410");
+            m_commands.clear();
+            m_queue.clear();
+            setSenderState(SenderStopped);
+            QSignalBlocker blocker(ui->cmdFilePause);
+            ui->cmdFilePause->setChecked(false);
+            updateControlsState();
+        }
+        return;
+    }
+
     if (checked) {
         s = m_senderState;
         // setSenderState(SenderPaused);
@@ -988,6 +1006,16 @@ void frmMain::on_cmdFilePause_clicked(bool checked)
 void frmMain::on_cmdFileAbort_clicked()
 {
     ui->cmdFileAbort->setEnabled(false);
+
+    if (m_marlinProtocol) {
+        m_currentConnection->send("M410");
+        m_currentConnection->send("M5");
+        m_commands.clear();
+        m_queue.clear();
+        setSenderState(SenderStopped);
+        updateControlsState();
+        return;
+    }
 
     if ((m_senderState == SenderPaused) || (m_senderState == SenderChangingTool)) {
         sendCommand("M2", -1, m_settings->showUICommands(), false);
@@ -1056,11 +1084,12 @@ void frmMain::on_cmdHome_clicked()
 {
     m_homing = true;
     m_updateSpindleSpeed = true;
-    sendCommand("$H", -1, m_settings->showUICommands());
+    sendCommand(m_marlinProtocol ? "G28 X Y Z" : "$H", -1, m_settings->showUICommands());
 }
 
 void frmMain::on_cmdCheck_clicked(bool checked)
 {
+    if (m_marlinProtocol) return;
     if (checked) {
         storeParserState();
         sendCommand("$C", -1, m_settings->showUICommands());
@@ -1072,32 +1101,54 @@ void frmMain::on_cmdCheck_clicked(bool checked)
 
 void frmMain::on_cmdReset_clicked()
 {
+    if (m_marlinProtocol) {
+        // Marlin has no GRBL soft reset. M112 is deliberately an emergency
+        // stop; recovery requires the controller's normal reset procedure.
+        m_currentConnection->send("M112");
+        m_commands.clear();
+        m_queue.clear();
+        setSenderState(SenderStopped);
+        ui->txtStatus->setText(tr("Emergency stop sent (M112)"));
+        return;
+    }
     grblReset();
 }
 
 void frmMain::on_cmdUnlock_clicked()
 {
+    if (m_marlinProtocol) return;
     m_updateSpindleSpeed = true;
     sendCommand("$X", -1, m_settings->showUICommands());
 }
 
 void frmMain::on_cmdHold_clicked(bool checked)
 {
+    if (m_marlinProtocol) {
+        if (checked) {
+            m_currentConnection->send("M410");
+            QSignalBlocker blocker(ui->cmdHold);
+            ui->cmdHold->setChecked(false);
+        }
+        return;
+    }
     m_currentConnection->send(checked ? "!" : "~");
 }
 
 void frmMain::on_cmdSleep_clicked()
 {
+    if (m_marlinProtocol) return;
     sendCommand("$SLP", -1, m_settings->showUICommands());
 }
 
 void frmMain::on_cmdDoor_clicked()
 {
+    if (m_marlinProtocol) return;
     m_currentConnection->send("\x84");
 }
 
 void frmMain::on_cmdFlood_clicked()
 {
+    if (m_marlinProtocol) return;
     m_currentConnection->send("\xa0");
 }
 
@@ -1843,7 +1894,8 @@ void frmMain::on_cmdStop_clicked()
 {
     m_jogVector = QVector3D(0, 0, 0);
     m_queue.clear();
-    m_currentConnection->send("\x85");
+    if (m_marlinProtocol) m_currentConnection->send("M410");
+    else m_currentConnection->send("\x85");
 }
 
 void frmMain::on_tblProgram_customContextMenuRequested(const QPoint &pos)
@@ -1914,6 +1966,11 @@ void frmMain::on_sliProgram_valueChanged(int value)
 
 void frmMain::onConnectionDataReceived(QString data)
 {
+    if (m_marlinProtocol && data.startsWith("X:")) {
+        processMarlinPosition(data);
+        return;
+    }
+
     // Filter prereset responses
     if (m_reseting) {
         if (!dataIsReset(data)) return;
@@ -2363,6 +2420,11 @@ void frmMain::onConnectionDataReceived(QString data)
                     sendCommand("$#", -2, m_settings->showUICommands(), true);
                 }
 
+                if (m_marlinProtocol && uncomment.startsWith("G28") && m_homing) {
+                    m_homing = false;
+                    sendCommand("M114", -3, m_settings->showUICommands(), true);
+                }
+
                 // Reset complete response
                 if (uncomment == "[CTRL+X]") {
                     m_resetCompleted = true;
@@ -2508,7 +2570,8 @@ void frmMain::onConnectionDataReceived(QString data)
                             holding = true;         // Hold transmit while messagebox is visible
                             response.clear();
 
-                            m_currentConnection->send("!");
+                            if (m_marlinProtocol) m_currentConnection->send("M410");
+                            else m_currentConnection->send("!");
                             m_senderErrorBox->checkBox()->setChecked(false);
                             qApp->beep();
                             int result = m_senderErrorBox->exec();
@@ -2517,7 +2580,7 @@ void frmMain::onConnectionDataReceived(QString data)
                             errors.clear();
                             if (m_senderErrorBox->checkBox()->isChecked()) m_settings->setIgnoreErrors(true);
                             if (result == QMessageBox::Ignore) {
-                                m_currentConnection->send("~");
+                                if (!m_marlinProtocol) m_currentConnection->send("~");
                             } else {
                                 grblReset();
                             }
@@ -2682,6 +2745,10 @@ void frmMain::onConnectionConnected()
 
     QTimer::singleShot(1000, [this]()
     {
+        if (m_marlinProtocol) {
+            initializeMarlinConnection();
+            return;
+        }
         if (m_settings->resetOnConnection())
         {
             grblReset();
@@ -2715,6 +2782,62 @@ void frmMain::onConnectionDisconnected()
     updateControlsState();
 }
 
+void frmMain::initializeMarlinConnection()
+{
+    m_sdRun = false;
+    m_fileCommandIndex = 0;
+    m_commands.clear();
+    m_queue.clear();
+
+    m_reseting = false;
+    m_resetCompleted = true;
+    m_homing = false;
+    m_updateSpindleSpeed = false;
+    m_updateParserStatus = false;
+    m_statusReceived = true;
+
+    setSenderState(SenderStopped);
+    setDeviceState(DeviceIdle);
+
+    // M115 identifies the firmware in the console. M114 is used instead of
+    // GRBL's realtime '?' status stream and is only sent while the queue is
+    // empty, so it cannot flood Marlin's command buffer.
+    sendCommand("M115", -2, m_settings->showUICommands());
+    sendCommand("M114", -3, m_settings->showUICommands(), true);
+    updateControlsState();
+}
+
+void frmMain::processMarlinPosition(const QString &data)
+{
+    static QRegExp position("X:([^\\s]+)\\s+Y:([^\\s]+)\\s+Z:([^\\s]+)");
+    if (position.indexIn(data) == -1) return;
+
+    const double x = position.cap(1).toDouble();
+    const double y = position.cap(2).toDouble();
+    const double z = position.cap(3).toDouble();
+
+    ui->txtMPosX->setValue(x);
+    ui->txtMPosY->setValue(y);
+    ui->txtMPosZ->setValue(z);
+    ui->txtWPosX->setValue(x);
+    ui->txtWPosY->setValue(y);
+    ui->txtWPosZ->setValue(z);
+    m_storedVars.setCoords("M", QVector3D(x, y, z));
+    m_storedVars.setCoords("W", QVector3D(x, y, z));
+    m_scriptApp->device()->setMachineCoordinates(x, y, z, ui->txtMPosA->value());
+    m_scriptApp->device()->setWorkCoordinates(x, y, z, ui->txtWPosA->value());
+
+    const DeviceState state = (m_senderState == SenderTransferring || m_senderState == SenderPausing)
+        ? DeviceRun : DeviceIdle;
+    setDeviceState(state);
+    ui->txtStatus->setText(m_statusCaptions[state]);
+    ui->txtStatus->setStyleSheet(QString("background-color: %1; color: %2;")
+        .arg(m_statusBackColors[state]).arg(m_statusForeColors[state]));
+
+    if (m_senderState == SenderStopping) completeTransfer();
+    emit statusReceived(data);
+}
+
 void frmMain::onTimerConnection()
 {
     if (m_currentConnection && !m_currentConnection->isConnected())
@@ -2723,6 +2846,7 @@ void frmMain::onTimerConnection()
     }
     else if (!m_homing/* && !m_reseting*/ && !ui->cmdHold->isChecked() && m_queue.length() == 0)
     {
+        if (m_marlinProtocol) return;
         if (m_updateSpindleSpeed) {
             m_updateSpindleSpeed = false;
             sendCommand(QString("S%1").arg(ui->slbSpindle->value()), -2, m_settings->showUICommands());
@@ -2736,6 +2860,12 @@ void frmMain::onTimerConnection()
 
 void frmMain::onTimerStateQuery()
 {
+    if (m_marlinProtocol) {
+        if (m_currentConnection->isConnected() && m_resetCompleted
+                && m_commands.isEmpty() && m_queue.isEmpty())
+            sendCommand("M114", -3, false);
+        return;
+    }
     if (m_currentConnection->isConnected() && m_resetCompleted && m_statusReceived) {
         m_currentConnection->send("?");
         m_statusReceived = false;
@@ -3491,6 +3621,7 @@ void frmMain::storeSettings()
     emit settingsAboutToSave();
 
     set->setValue("connectionType", m_settings->connectionType());
+    set->setValue("protocol", m_settings->protocol());
     set->setValue("port", m_settings->port());
     set->setValue("baud", m_settings->baud());
     set->setValue("telnetAddress", m_settings->telnetAddress());
@@ -3685,6 +3816,7 @@ void frmMain::restoreSettings()
         m_settings->setPanelWidth(set->value("panelWidth", 40).toInt());
         m_settings->setTheme(set->value("theme", ThemeSystem).toInt());
         m_settings->setConnectionType((ConnectionType)set->value("connectionType").toInt());
+        m_settings->setProtocol(static_cast<frmSettings::Protocol>(set->value("protocol", frmSettings::ProtocolGrbl).toInt()));
         m_settings->setPort(set->value("port").toString());
         m_settings->setBaud(set->value("baud", 115200).toInt());
         m_settings->setTelnetAddress(set->value("telnetAddress", "192.168.0.1").toString());
@@ -4053,6 +4185,10 @@ void frmMain::applyTheme()
 
 void frmMain::applySettings()
 {
+    const bool protocolChanged = m_marlinProtocol
+        != (m_settings->protocol() == frmSettings::ProtocolMarlin);
+    m_marlinProtocol = m_settings->protocol() == frmSettings::ProtocolMarlin;
+
     // Apply theme
     applyTheme();
 
@@ -4323,7 +4459,13 @@ void frmMain::applySettings()
         m_currentConnection->connect();
     }
 
-    m_timerStateQuery.setInterval(m_settings->queryStateTime());
+    m_timerStateQuery.setInterval(m_marlinProtocol ? qMax(250, m_settings->queryStateTime())
+                                                : m_settings->queryStateTime());
+
+    if (protocolChanged && m_currentConnection && m_currentConnection->isConnected()) {
+        if (m_marlinProtocol) initializeMarlinConnection();
+        else grblReset();
+    }
 
     updateControlsState();
 }
@@ -4502,6 +4644,10 @@ void frmMain::loadPlugins()
 
 void frmMain::grblReset()
 {
+    if (m_marlinProtocol) {
+        on_cmdReset_clicked();
+        return;
+    }
     m_currentConnection->send("\x18");
 
     setSenderState(SenderStopped);
@@ -4595,9 +4741,11 @@ frmMain::SendCommandResult frmMain::sendCommand(QString command, int tableIndex,
         if (!uncomment.contains(M6) || m_settings->toolChangeUseCommands() || m_settings->toolChangePause()) setSenderState(SenderPausing);
     }
 
-    // Queue offsets request on G92, G10 commands
+    // Refresh coordinates after a work-offset change. GRBL exposes offsets
+    // through $#, while Marlin's portable query is M114.
     static QRegExp G92("(G92|G10)(?!\\d)");
-    if (uncomment.contains(G92)) sendCommand("$#", -3, showInConsole, true);
+    if (uncomment.contains(G92))
+        sendCommand(m_marlinProtocol ? "M114" : "$#", -3, showInConsole, true);
 
     m_currentConnection->send(command);
 
@@ -5300,13 +5448,21 @@ void frmMain::updateControlsState() {
     ui->cboCommand->setEnabled(portOpened && (!ui->chkKeyboardControl->isChecked()));
     ui->cmdCommandSend->setEnabled(portOpened);
 
-    ui->cmdCheck->setEnabled(portOpened && !process);
+    // These controls are GRBL realtime/system commands and must never be
+    // emitted to a Marlin controller.
+    ui->cmdCheck->setVisible(!m_marlinProtocol);
+    ui->cmdUnlock->setVisible(!m_marlinProtocol);
+    ui->cmdSleep->setVisible(!m_marlinProtocol);
+    ui->cmdDoor->setVisible(!m_marlinProtocol);
+    ui->cmdFlood->setVisible(!m_marlinProtocol);
+    ui->grpOverriding->setVisible(!m_marlinProtocol);
+
+    ui->cmdCheck->setEnabled(portOpened && !process && !m_marlinProtocol);
     ui->cmdHome->setEnabled(!process);
-    ui->cmdCheck->setEnabled(!process);
-    ui->cmdUnlock->setEnabled(!process);
+    ui->cmdUnlock->setEnabled(!process && !m_marlinProtocol);
     ui->cmdSpindle->setEnabled(!process);
     ui->slbSpindle->setEnabled(!m_sdRun);
-    ui->cmdSleep->setEnabled(!process);
+    ui->cmdSleep->setEnabled(!process && !m_marlinProtocol);
 
     ui->actFileNew->setEnabled(m_senderState == SenderStopped);
     ui->actFileOpen->setEnabled(m_senderState == SenderStopped);
@@ -5821,7 +5977,7 @@ bool frmMain::dataIsEnd(QString data) {
     ends << "error";
 
     foreach (QString str, ends) {
-        if (data.contains(str)) return true;
+        if (data.contains(str, Qt::CaseInsensitive)) return true;
     }
 
     return false;
@@ -5953,6 +6109,18 @@ void frmMain::jogStep()
         QVector4D vec = m_jogVector * ui->cboJogStep->currentText().toDouble();
 
         if (vec.length()) {
+            if (m_marlinProtocol) {
+                // Marlin has no GRBL $J realtime jog. Always use a bounded,
+                // relative move and restore absolute mode afterwards. A is
+                // intentionally omitted: this machine's Marlin profile is XYZ.
+                const int precision = 3;
+                sendCommands(QString("G21\nG91\nG0 X%1 Y%2 Z%3 F%4\nG90")
+                    .arg(toMetric(vec.x()), 0, 'f', precision)
+                    .arg(toMetric(vec.y()), 0, 'f', precision)
+                    .arg(toMetric(vec.z()), 0, 'f', precision)
+                    .arg(toMetric(ui->cboJogFeed->currentText().toDouble()), 0, 'f', precision), -3);
+                return;
+            }
             if (m_settings->axisAEnabled()) {
                 sendCommand(QString("$J=%1G91X%2Y%3Z%4A%5F%6")
                     .arg(m_settings->units() ? "G20" : "G21")
@@ -5975,6 +6143,7 @@ void frmMain::jogStep()
 
 void frmMain::jogContinuous()
 {
+    if (m_marlinProtocol) return;
     static bool block = false;
     static QVector4D v;
 

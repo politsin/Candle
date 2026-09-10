@@ -44,6 +44,9 @@ function createSettingsWidget()
 
 function onButtonClicked()
 {
-    // Direct CTRL+X command send
-    app.device.sendRuntimeCommand(String.fromCharCode(24));
+    // Ctrl-X is a GRBL reset. Marlin needs its own emergency-stop command.
+    if (app.settings.firmwareProtocol === 1)
+        app.device.sendCommand("M112");
+    else
+        app.device.sendRuntimeCommand(String.fromCharCode(24));
 }

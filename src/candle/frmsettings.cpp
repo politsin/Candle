@@ -18,6 +18,8 @@
 #include <QAction>
 #include <QFileDialog>
 #include <QJsonArray>
+#include <QHBoxLayout>
+#include <QLabel>
 
 class CustomKeySequenceEdit : public QKeySequenceEdit
 {
@@ -63,6 +65,17 @@ frmSettings::frmSettings(QWidget *parent) :
     ui(new Ui::frmSettings)
 {
     ui->setupUi(this);
+
+    // Transport (serial/TCP/WebSocket) is independent from the firmware
+    // protocol selected here.
+    auto protocolLayout = new QHBoxLayout();
+    auto protocolLabel = new QLabel(tr("Firmware protocol:"), this);
+    m_protocol = new QComboBox(this);
+    m_protocol->addItem("GRBL", ProtocolGrbl);
+    m_protocol->addItem("Marlin", ProtocolMarlin);
+    protocolLayout->addWidget(protocolLabel);
+    protocolLayout->addWidget(m_protocol, 1);
+    qobject_cast<QVBoxLayout*>(ui->grpConnection->layout())->insertLayout(0, protocolLayout);
 
     this->setLocale(QLocale::C);
     m_intValidator.setBottom(1);
@@ -173,6 +186,22 @@ void frmSettings::addCustomSettings(QGroupBox *box)
     ui->listCategories->addItem(box->title());
 
     m_customSettings.append(box);
+}
+
+frmSettings::Protocol frmSettings::protocol() const
+{
+    return static_cast<Protocol>(m_protocol->currentData().toInt());
+}
+
+void frmSettings::setProtocol(Protocol protocol)
+{
+    const int index = m_protocol->findData(protocol);
+    m_protocol->setCurrentIndex(index >= 0 ? index : 0);
+}
+
+int frmSettings::firmwareProtocol() const
+{
+    return static_cast<int>(protocol());
 }
 
 void frmSettings::on_listCategories_currentRowChanged(int currentRow)
@@ -897,6 +926,7 @@ void frmSettings::on_cmdDefaults_clicked()
 
 void frmSettings::setDefaultSettings()
 {
+    setProtocol(ProtocolGrbl);
     setPort("");
     setBaud(115200);
 

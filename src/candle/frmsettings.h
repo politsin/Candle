@@ -34,6 +34,7 @@ class frmSettings : public QDialog
     Q_PROPERTY(int telnetPort READ telnetPort WRITE setTelnetPort)
     Q_PROPERTY(QString webSocketUrl READ webSocketUrl WRITE setWebSocketUrl)
     Q_PROPERTY(bool webSocketBinaryMode READ webSocketBinaryMode WRITE setWebSocketBinaryMode)
+    Q_PROPERTY(int firmwareProtocol READ firmwareProtocol)
     Q_PROPERTY(double toolDiameter READ toolDiameter WRITE setToolDiameter)
     Q_PROPERTY(double toolLength READ toolLength WRITE setToolLength)
     Q_PROPERTY(bool antialiasing READ antialiasing WRITE setAntialiasing)
@@ -86,6 +87,11 @@ class frmSettings : public QDialog
     Q_PROPERTY(QVariantMap device READ deviceSettingsVariantMap)
 
 public:
+    enum Protocol {
+        ProtocolGrbl = 0,
+        ProtocolMarlin = 1
+    };
+
     explicit frmSettings(QWidget *parent = 0);
     ~frmSettings();
 
@@ -93,6 +99,10 @@ public:
     void undo();
 
     void addCustomSettings(QGroupBox *box);
+
+    Protocol protocol() const;
+    void setProtocol(Protocol protocol);
+    int firmwareProtocol() const;
 
     double toolDiameter();
     void setToolDiameter(double diameter);
@@ -280,6 +290,7 @@ private:
     };
 
     Ui::frmSettings *ui;
+    QComboBox *m_protocol;
 
     void searchPorts();
 
