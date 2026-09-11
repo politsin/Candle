@@ -56,7 +56,7 @@
 
 #include "connections/connection.h"
 
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) && QT_VERSION_MAJOR < 6
     #include <QtWinExtras/QtWinExtras>
     #include "shobjidl.h"
 #endif
@@ -356,7 +356,7 @@ private:
 
     QMenu *m_tableMenu;
     QMessageBox* m_senderErrorBox;
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) && QT_VERSION_MAJOR < 6
     QWinTaskbarButton *m_taskBarButton;
     QWinTaskbarProgress *m_taskBarProgress;
 #endif

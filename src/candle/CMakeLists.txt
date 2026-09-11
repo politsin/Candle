@@ -15,9 +15,12 @@ set(CANDLE_QT_COMPONENTS Core Widgets OpenGL SerialPort LinguistTools Network We
 if(CANDLE_ENABLE_LEGACY_SCRIPTS)
     list(APPEND CANDLE_QT_COMPONENTS Script ScriptTools)
 endif()
-find_package(Qt5 COMPONENTS ${CANDLE_QT_COMPONENTS} REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS ${CANDLE_QT_COMPONENTS} REQUIRED)
+if(QT_VERSION_MAJOR EQUAL 6)
+    find_package(Qt6 COMPONENTS Core5Compat REQUIRED)
+endif()
 
-if(WIN32)
+if(WIN32 AND QT_VERSION_MAJOR EQUAL 5)
     find_package(Qt5 COMPONENTS WinExtras)
 endif()
 
@@ -26,21 +29,24 @@ list(REMOVE_ITEM SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
 file(GLOB TS_FILES translations/*.ts)
 file(GLOB UI_FILES *.ui)
 
-qt5_add_resources(RSC_FILES
-        shaders.qrc
-        images.qrc
-        fonts.qrc
-        styles.qrc
-)
-
-qt5_add_translation(QM_FILES ${TS_FILES})
+if(QT_VERSION_MAJOR EQUAL 5)
+    qt5_add_resources(RSC_FILES shaders.qrc images.qrc fonts.qrc styles.qrc)
+    qt5_add_translation(QM_FILES ${TS_FILES})
+else()
+    qt_add_resources(RSC_FILES shaders.qrc images.qrc fonts.qrc styles.qrc)
+    qt_add_translation(QM_FILES ${TS_FILES})
+endif()
 
 if(WIN32)
     add_executable(candle WIN32 ${SRC_FILES} main.cpp ${RSC_FILES} ${QM_FILES} icon.rc)
-    target_link_libraries(candle PRIVATE Qt5::WinExtras)
+    if(QT_VERSION_MAJOR EQUAL 5)
+        target_link_libraries(candle PRIVATE Qt5::WinExtras)
+    endif()
     set_target_properties(candle PROPERTIES WIN32_EXECUTABLE ON)
     add_executable(candle-cli ${SRC_FILES} main.cpp ${RSC_FILES} ${QM_FILES})
-    target_link_libraries(candle-cli PRIVATE Qt5::WinExtras)
+    if(QT_VERSION_MAJOR EQUAL 5)
+        target_link_libraries(candle-cli PRIVATE Qt5::WinExtras)
+    endif()
     target_compile_definitions(candle-cli PRIVATE CANDLE_CONSOLE)
 elseif(APPLE)
     set(APP_ICON_MACOS "${CMAKE_SOURCE_DIR}/src/candle/images/candle.icns")
@@ -79,12 +85,18 @@ if(WIN32)
     endif()
 endif()
 
-target_link_libraries(candle PRIVATE customwidgets Qt5::Core Qt5::Widgets Qt5::OpenGL Qt5::SerialPort Qt5::Network Qt5::WebSockets Qt5::Help)
+target_link_libraries(candle PRIVATE customwidgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::OpenGL Qt${QT_VERSION_MAJOR}::SerialPort Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets Qt${QT_VERSION_MAJOR}::Help)
+if(QT_VERSION_MAJOR EQUAL 6)
+    target_link_libraries(candle PRIVATE Qt6::Core5Compat)
+endif()
 if(CANDLE_ENABLE_LEGACY_SCRIPTS)
     target_link_libraries(candle PRIVATE Qt5::Script Qt5::ScriptTools)
 endif()
 if(WIN32)
-    target_link_libraries(candle-cli PRIVATE customwidgets Qt5::Core Qt5::Widgets Qt5::OpenGL Qt5::SerialPort Qt5::Network Qt5::WebSockets Qt5::Help)
+    target_link_libraries(candle-cli PRIVATE customwidgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::OpenGL Qt${QT_VERSION_MAJOR}::SerialPort Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets Qt${QT_VERSION_MAJOR}::Help)
+    if(QT_VERSION_MAJOR EQUAL 6)
+        target_link_libraries(candle-cli PRIVATE Qt6::Core5Compat)
+    endif()
     if(CANDLE_ENABLE_LEGACY_SCRIPTS)
         target_link_libraries(candle-cli PRIVATE Qt5::Script Qt5::ScriptTools)
     endif()
@@ -153,7 +165,7 @@ endif()
 # Translations
 add_custom_target(
     lupdate
-    COMMAND $<TARGET_FILE:Qt${QT_VERSION}::lupdate>
+    COMMAND $<TARGET_FILE:Qt${QT_VERSION_MAJOR}::lupdate>
         ${SRC_FILES} ${UI_FILES}
         -locations none
         -no-obsolete
@@ -164,7 +176,7 @@ add_custom_target(
 # Docs
 add_custom_target(
     docs
-    COMMAND $<TARGET_FILE:Qt${QT_VERSION}::qhelpgenerator>
+    COMMAND $<TARGET_FILE:Qt${QT_VERSION_MAJOR}::qhelpgenerator>
         ${CMAKE_SOURCE_DIR}/help/candle.qhcp
         -o ${CMAKE_SOURCE_DIR}/help/candle.qhc
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

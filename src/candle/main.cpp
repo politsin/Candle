@@ -3,7 +3,6 @@
 
 #include <QApplication>
 #include <QDebug>
-#include <QGLWidget>
 #include <QLocale>
 #include <QTranslator>
 #include <QFile>

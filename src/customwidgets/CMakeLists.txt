@@ -1,4 +1,4 @@
-find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Widgets REQUIRED)
 
 file(GLOB SRC_FILES *.cpp)
 
@@ -8,7 +8,7 @@ target_compile_definitions(customwidgets PRIVATE CUSTOMWIDGETS_EXPORT)
 
 target_include_directories(customwidgets PRIVATE .)
 
-target_link_libraries(customwidgets PRIVATE Qt5::Core Qt5::Widgets)
+target_link_libraries(customwidgets PRIVATE Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets)
 
 if(APPLE)
     install(TARGETS customwidgets LIBRARY DESTINATION Candle.app/Contents/Frameworks)
