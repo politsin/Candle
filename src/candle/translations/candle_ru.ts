@@ -131,6 +131,14 @@
 <context>
     <name>frmMain</name>
     <message>
+        <source>Motors</source>
+        <translation>Моторы</translation>
+    </message>
+    <message>
+        <source>Disable %1 motor</source>
+        <translation>Отключить мотор %1</translation>
+    </message>
+    <message>
         <source>G-code program</source>
         <translation>G-code программа</translation>
     </message>

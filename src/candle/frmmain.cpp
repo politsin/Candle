@@ -16,6 +16,8 @@
 #include <QActionGroup>
 #include <QLabel>
 #include <QLayout>
+#include <QGridLayout>
+#include <QPushButton>
 #include <QDrag>
 #include <QMimeData>
 #include <QTranslator>
@@ -248,6 +250,37 @@ void frmMain::initUi()
     connectionLayout->addWidget(m_connectionIndicator, 0, Qt::AlignTop);
     connectionLayout->addWidget(m_connectionBanner, 1);
     ui->verticalLayout_6->insertLayout(0, connectionLayout);
+
+    // Native user commands replace the former plugin-only empty panel. Keep
+    // the layout grid-based so further hardware actions can be added without
+    // reviving the retired QtScript plugin runtime.
+    auto *motorsGroup = new QGroupBox(tr("Motors"), ui->scrollContentsUser);
+    motorsGroup->setObjectName("grpUserMotors");
+    motorsGroup->setCheckable(true);
+    motorsGroup->setChecked(true);
+    auto *motorsLayout = new QGridLayout(motorsGroup);
+    motorsLayout->setContentsMargins(6, 4, 6, 6);
+    motorsLayout->setHorizontalSpacing(4);
+    motorsLayout->setVerticalSpacing(4);
+
+    const auto addMotorDisableButton = [this, motorsLayout](const QString &label, const QString &command,
+        int row, int column, int columnSpan = 1) {
+        auto *button = new QPushButton(label, motorsLayout->parentWidget());
+        button->setProperty("gcode", command);
+        button->setMinimumHeight(ui->cmdFileOpen->sizeHint().height());
+        button->setToolTip(tr("Disable %1 motor").arg(label));
+        motorsLayout->addWidget(button, row, column, 1, columnSpan);
+        m_motorDisableButtons.append(button);
+        connect(button, &QPushButton::clicked, this, &frmMain::onUserMotorDisableClicked);
+    };
+    addMotorDisableButton("X", "M18 X", 0, 0);
+    addMotorDisableButton("Y", "M18 Y", 0, 1);
+    addMotorDisableButton("Z", "M18 Z", 0, 2);
+    addMotorDisableButton("XYZ", "M18 X Y Z", 1, 0, 3);
+    motorsLayout->setColumnStretch(0, 1);
+    motorsLayout->setColumnStretch(1, 1);
+    motorsLayout->setColumnStretch(2, 1);
+    static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, motorsGroup);
 
     ui->cmdXMinus->setBackColor(QColor(153, 180, 209));
     ui->cmdXPlus->setBackColor(ui->cmdXMinus->backColor());
@@ -1945,6 +1978,16 @@ void frmMain::on_cmdStop_clicked()
     m_queue.clear();
     if (m_marlinProtocol) m_currentConnection->send("M410");
     else m_currentConnection->send("\x85");
+}
+
+void frmMain::onUserMotorDisableClicked()
+{
+    auto *button = qobject_cast<QPushButton *>(sender());
+    if (!button || m_senderState != SenderStopped || m_sdRun) return;
+
+    // The command is intentionally sent only from a deliberate GUI click.
+    // It releases the specified Marlin stepper(s); it does not move an axis.
+    sendCommand(button->property("gcode").toString(), -1, m_settings->showUICommands());
 }
 
 void frmMain::on_tblProgram_customContextMenuRequested(const QPoint &pos)
@@ -5873,6 +5916,9 @@ void frmMain::updateControlsState() {
     ui->grpState->setEnabled(portOpened);
     ui->grpControl->setEnabled(portOpened);
     ui->widgetSpindle->setEnabled(portOpened);
+    const bool motorDisableAvailable = portOpened && m_resetCompleted
+        && m_senderState == SenderStopped && !m_sdRun;
+    for (auto *button : m_motorDisableButtons) button->setEnabled(motorDisableAvailable);
     ui->widgetJog->setEnabled(portOpened && ((m_senderState == SenderStopped)
         || (m_senderState == SenderChangingTool)) && !m_sdRun);
     ui->cboCommand->setEnabled(portOpened && (!ui->chkKeyboardControl->isChecked()));

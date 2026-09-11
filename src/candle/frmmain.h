@@ -73,6 +73,7 @@ class frmProgram;
 
 class QTcpServer;
 class QTcpSocket;
+class QPushButton;
 
 struct CommandAttributes {
     int length;
@@ -249,6 +250,7 @@ private slots:
     void on_cmdAPlusY_pressed();
     void on_cmdAPlusY_released();
     void on_cmdStop_clicked();
+    void onUserMotorDisableClicked();
     void on_tblProgram_customContextMenuRequested(const QPoint &pos);
     void on_mnuViewWindows_aboutToShow();
     void on_mnuViewPanels_aboutToShow();
@@ -359,6 +361,7 @@ private:
     QMessageBox* m_senderErrorBox;
     QLabel *m_connectionBanner;
     QLabel *m_connectionIndicator;
+    QList<QPushButton *> m_motorDisableButtons;
 #if defined(Q_OS_WIN) && QT_VERSION_MAJOR < 6
     QWinTaskbarButton *m_taskBarButton;
     QWinTaskbarProgress *m_taskBarProgress;
