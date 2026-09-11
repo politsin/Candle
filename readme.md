@@ -2,6 +2,10 @@ Candle
 -----------
 GRBL controller application with G-Code visualizer written in Qt.
 
+This fork also adds Marlin support and a localhost-only automation API for
+diagnostics and CNC test stands; see [MARLIN.md](MARLIN.md) and
+[AUTOMATION.md](AUTOMATION.md).
+
 ![screenshot](/screenshots/screenshot_main_window.png)
 
 Supported functions:

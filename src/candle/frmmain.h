@@ -18,6 +18,8 @@
 #include <QScriptEngine>
 #include <QGroupBox>
 #include <QPalette>
+#include <QDateTime>
+#include <QJsonObject>
 #include <exception>
 #include <QFuture>
 
@@ -65,6 +67,9 @@ namespace Ui {
 class frmMain;
 class frmProgram;
 }
+
+class QTcpServer;
+class QTcpSocket;
 
 struct CommandAttributes {
     int length;
@@ -386,6 +391,13 @@ private:
 
     // Connections
     Connection *m_currentConnection;
+    QTcpServer *m_automationServer;
+    int m_automationPort;
+    QString m_automationInstanceId;
+    QDateTime m_automationStartedAt;
+    QDateTime m_automationArmedUntil;
+    QStringList m_automationResponses;
+    QString m_automationLastError;
 
     // Queues
     QList<CommandAttributes> m_commands;
@@ -496,6 +508,15 @@ private:
 
     // Communication
     void grblReset();
+    void startAutomationServer();
+    void handleAutomationSocket(QTcpSocket *socket);
+    void writeAutomationResponse(QTcpSocket *socket, int statusCode, const QJsonObject &response);
+    QJsonObject handleAutomationRequest(const QString &method, const QString &path, const QJsonObject &request);
+    QJsonObject automationStatus() const;
+    QJsonObject automationError(const QString &message) const;
+    bool automationArmed() const;
+    bool automationRequiresArm(QJsonObject &response) const;
+    bool automationReadOnlyCommand(const QString &command) const;
     SendCommandResult sendCommand(QString command, int tableIndex = -1, bool showInConsole = true, bool wait = false);
     void sendCommands(QString commands, int tableIndex = -1);
     void sendNextFileCommands();

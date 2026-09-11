@@ -25,6 +25,15 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QClipboard>
 #include <QStyleFactory>
+#include <QHostAddress>
+#include <QCoreApplication>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonParseError>
+#include <QTcpServer>
+#include <QTcpSocket>
+#include <QUuid>
 #include "frmmain.h"
 #include "theme.h"
 #include "ui_frmmain.h"
@@ -67,6 +76,7 @@ frmMain::frmMain(QWidget *parent) : QMainWindow(parent), ui(new Ui::frmMain)
     loadSettings();
     setSenderState(SenderStopped);
     updateControlsState();
+    startAutomationServer();
 
     // Handle cli file loading
     if (qApp->arguments().count() > 1 && isGCodeFile(qApp->arguments().last())) {
@@ -195,6 +205,10 @@ void frmMain::initVariables()
 
     // Connection
     m_currentConnection = nullptr;
+    m_automationServer = nullptr;
+    m_automationPort = 0;
+    m_automationInstanceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_automationStartedAt = QDateTime::currentDateTimeUtc();
 }
 
 void frmMain::initUi()
@@ -1971,6 +1985,12 @@ void frmMain::on_sliProgram_valueChanged(int value)
 
 void frmMain::onConnectionDataReceived(QString data)
 {
+    const auto automationLine = data.trimmed();
+    if (!automationLine.isEmpty()) {
+        m_automationResponses.append(automationLine);
+        while (m_automationResponses.size() > 100) m_automationResponses.removeFirst();
+    }
+
     if (m_marlinProtocol && data.startsWith("X:")) {
         processMarlinPosition(data);
         return;
@@ -2730,6 +2750,7 @@ void frmMain::onConnectionDataReceived(QString data)
 
 void frmMain::onConnectionErrorOccurred(QString error)
 {
+    m_automationLastError = error;
     static QString previousError;
 
     if (error != previousError) {
@@ -4647,6 +4668,331 @@ void frmMain::loadPlugins()
     }
 }
 
+void frmMain::startAutomationServer()
+{
+    m_automationServer = new QTcpServer(this);
+    connect(m_automationServer, &QTcpServer::newConnection, this, [this]() {
+        while (m_automationServer->hasPendingConnections()) {
+            auto *socket = m_automationServer->nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
+                handleAutomationSocket(socket);
+            });
+            connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        }
+    });
+
+    for (int port = 8090; port < 8190; ++port) {
+        if (m_automationServer->listen(QHostAddress::LocalHost, port)) {
+            m_automationPort = port;
+            break;
+        }
+    }
+    if (!m_automationPort) {
+        m_automationLastError = tr("Automation API cannot listen on a local port: ")
+            + m_automationServer->errorString();
+        qWarning(generalLogCategory) << m_automationLastError;
+    } else {
+        qInfo(generalLogCategory) << "Automation API listening on http://127.0.0.1:" << m_automationPort << "/api/v1";
+    }
+}
+
+void frmMain::handleAutomationSocket(QTcpSocket *socket)
+{
+    auto buffer = socket->property("automationBuffer").toByteArray();
+    buffer.append(socket->readAll());
+    socket->setProperty("automationBuffer", buffer);
+
+    const int headerEnd = buffer.indexOf("\r\n\r\n");
+    if (headerEnd < 0) return;
+
+    const auto headerLines = QString::fromLatin1(buffer.left(headerEnd)).split("\r\n");
+    if (headerLines.isEmpty()) {
+        writeAutomationResponse(socket, 400, automationError("Malformed HTTP request"));
+        return;
+    }
+
+    const auto requestLine = headerLines.first().split(' ');
+    if (requestLine.size() < 2) {
+        writeAutomationResponse(socket, 400, automationError("Malformed request line"));
+        return;
+    }
+
+    int contentLength = 0;
+    for (const auto &line : headerLines) {
+        const int colon = line.indexOf(':');
+        if (colon > 0 && line.left(colon).compare("Content-Length", Qt::CaseInsensitive) == 0)
+            contentLength = line.mid(colon + 1).trimmed().toInt();
+    }
+    if (contentLength < 0 || contentLength > 65536) {
+        writeAutomationResponse(socket, 413, automationError("Request body must be <= 65536 bytes"));
+        return;
+    }
+    if (buffer.size() < headerEnd + 4 + contentLength) return;
+
+    QJsonObject request;
+    const auto jsonBody = buffer.mid(headerEnd + 4, contentLength);
+    if (!jsonBody.trimmed().isEmpty()) {
+        QJsonParseError parseError;
+        const auto document = QJsonDocument::fromJson(jsonBody, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            writeAutomationResponse(socket, 400, automationError("Request body must be a JSON object"));
+            return;
+        }
+        request = document.object();
+    }
+
+    const auto response = handleAutomationRequest(requestLine.at(0).toUpper(), requestLine.at(1), request);
+    const int status = response.value("ok").toBool() ? 200 : 400;
+    writeAutomationResponse(socket, status, response);
+}
+
+void frmMain::writeAutomationResponse(QTcpSocket *socket, int statusCode, const QJsonObject &response)
+{
+    const auto body = QJsonDocument(response).toJson(QJsonDocument::Compact);
+    const QByteArray status = statusCode == 200 ? "200 OK" : statusCode == 413 ? "413 Payload Too Large" : "400 Bad Request";
+    socket->write("HTTP/1.1 " + status + "\r\nContent-Type: application/json\r\nContent-Length: "
+        + QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
+    socket->disconnectFromHost();
+}
+
+QJsonObject frmMain::automationError(const QString &message) const
+{
+    return QJsonObject { { "ok", false }, { "error", message } };
+}
+
+bool frmMain::automationArmed() const
+{
+    return m_automationArmedUntil.isValid() && QDateTime::currentDateTimeUtc() < m_automationArmedUntil;
+}
+
+bool frmMain::automationRequiresArm(QJsonObject &response) const
+{
+    if (automationArmed()) return true;
+    response = automationError("Motion, spindle, probing, and file execution require POST /api/v1/arm first");
+    return false;
+}
+
+bool frmMain::automationReadOnlyCommand(const QString &command) const
+{
+    const auto normalized = command.trimmed().toUpper();
+    return normalized == "M105" || normalized == "M114" || normalized == "M115"
+        || normalized == "M119" || normalized == "?" || normalized == "$$"
+        || normalized == "$#" || normalized == "$G";
+}
+
+QJsonObject frmMain::automationStatus() const
+{
+    const qint64 armedFor = automationArmed()
+        ? qMax<qint64>(0, QDateTime::currentDateTimeUtc().secsTo(m_automationArmedUntil)) : 0;
+    QJsonObject response {
+        { "ok", true },
+        { "service", "candle-automation" },
+        { "api_version", 1 },
+        { "instance_id", m_automationInstanceId },
+        { "pid", static_cast<qint64>(QCoreApplication::applicationPid()) },
+        { "started_at_utc", m_automationStartedAt.toString(Qt::ISODateWithMs) },
+        { "executable", QCoreApplication::applicationFilePath() },
+        { "qt_version", qVersion() },
+        { "api_bind", QString("127.0.0.1:%1").arg(m_automationPort) },
+        { "connection", m_currentConnection && m_currentConnection->isConnected() },
+        { "ready", m_currentConnection && m_currentConnection->isConnected() && m_resetCompleted },
+        { "protocol", m_marlinProtocol ? "marlin" : "grbl" },
+        { "transport", m_settings->connectionType() == ConnectionType::SerialPort ? "serial"
+            : m_settings->connectionType() == ConnectionType::Telnet ? "telnet" : "websocket" },
+        { "sender_state", static_cast<int>(m_senderState) },
+        { "device_state", m_deviceStatuses.value(m_deviceState, "Unknown") },
+        { "queue_depth", m_queue.size() },
+        { "in_flight", m_commands.size() },
+        { "armed", automationArmed() },
+        { "armed_for_seconds", armedFor },
+        { "loaded_file", m_programFileName },
+        { "program_lines", m_programModel.rowCount() },
+        { "last_error", m_automationLastError }
+    };
+    response["work_position"] = QJsonObject {
+        { "x", ui->txtWPosX->value() }, { "y", ui->txtWPosY->value() }, { "z", ui->txtWPosZ->value() }
+    };
+    response["machine_position"] = QJsonObject {
+        { "x", ui->txtMPosX->value() }, { "y", ui->txtMPosY->value() }, { "z", ui->txtMPosZ->value() }
+    };
+    QJsonObject connectionConfig;
+    if (m_settings->connectionType() == ConnectionType::SerialPort) {
+        connectionConfig["port"] = m_settings->port();
+        connectionConfig["baud"] = m_settings->baud();
+    } else if (m_settings->connectionType() == ConnectionType::Telnet) {
+        connectionConfig["host"] = m_settings->telnetAddress();
+        connectionConfig["tcp_port"] = m_settings->telnetPort();
+    } else {
+        connectionConfig["url"] = m_settings->webSocketUrl();
+    }
+    response["connection_config"] = connectionConfig;
+    response["file_command_index"] = m_fileCommandIndex;
+    response["heightmap_mode"] = m_heightMapMode;
+    response["recent_events"] = QJsonArray::fromStringList(m_automationResponses);
+    return response;
+}
+
+QJsonObject frmMain::handleAutomationRequest(const QString &method, const QString &path, const QJsonObject &request)
+{
+    if (method == "GET" && path == "/healthz")
+        return QJsonObject { { "ok", true }, { "service", "candle-automation" } };
+    if (method == "GET" && path == "/readyz") {
+        auto response = automationStatus();
+        response["ok"] = response.value("ready").toBool();
+        return response;
+    }
+    if (method == "GET" && (path == "/api/v1/status" || path == "/api/v1/events"))
+        return automationStatus();
+    if (method != "POST") return automationError("Use GET /healthz, GET /readyz, GET /api/v1/status, or POST /api/v1/*");
+
+    if (path == "/api/v1/arm") {
+        const int seconds = qBound(5, request.value("seconds").toInt(60), 300);
+        m_automationArmedUntil = QDateTime::currentDateTimeUtc().addSecs(seconds);
+        auto response = automationStatus();
+        response["message"] = "Automation motion is armed";
+        return response;
+    }
+    if (path == "/api/v1/disarm") {
+        m_automationArmedUntil = QDateTime();
+        return automationStatus();
+    }
+    if (path == "/api/v1/connect") {
+        const auto transport = request.value("transport").toString().toLower();
+        const auto protocol = request.value("protocol").toString().toLower();
+        if (protocol == "marlin") m_settings->setProtocol(frmSettings::ProtocolMarlin);
+        else if (protocol == "grbl") m_settings->setProtocol(frmSettings::ProtocolGrbl);
+        else return automationError("protocol must be marlin or grbl");
+        if (transport == "serial") {
+            const auto port = request.value("port").toString();
+            if (port.isEmpty()) return automationError("serial transport requires port");
+            m_settings->setConnectionType(ConnectionType::SerialPort);
+            m_settings->setPort(port);
+            m_settings->setBaud(request.value("baud").toInt(115200));
+        } else if (transport == "telnet") {
+            const auto host = request.value("host").toString();
+            const int port = request.value("tcp_port").toInt();
+            if (host.isEmpty() || port < 1 || port > 65535) return automationError("telnet requires host and tcp_port");
+            m_settings->setConnectionType(ConnectionType::Telnet);
+            m_settings->setTelnetAddress(host);
+            m_settings->setTelnetPort(port);
+        } else if (transport == "websocket") {
+            const auto url = request.value("url").toString();
+            if (url.isEmpty()) return automationError("websocket transport requires url");
+            m_settings->setConnectionType(ConnectionType::WebSocket);
+            m_settings->setWebSocketUrl(url);
+        } else return automationError("transport must be serial, telnet, or websocket");
+        applySettings();
+        storeSettings();
+        auto response = automationStatus();
+        response["message"] = "Connection settings applied; poll /readyz until ready";
+        return response;
+    }
+    if (path == "/api/v1/disconnect") {
+        if (m_currentConnection) m_currentConnection->disconnect();
+        return automationStatus();
+    }
+    if (path == "/api/v1/test/connection") {
+        if (!m_currentConnection || !m_currentConnection->isConnected()) return automationError("Controller is not connected");
+        sendCommand("M115", -2, true);
+        sendCommand(m_marlinProtocol ? "M114" : "?", -3, true, true);
+        sendCommand(m_marlinProtocol ? "M119" : "$#", -3, true, true);
+        auto response = automationStatus();
+        response["message"] = "Identification, position, and endstop queries queued";
+        return response;
+    }
+    if (path == "/api/v1/command") {
+        const auto command = request.value("gcode").toString().trimmed();
+        if (command.isEmpty() || command.size() > 512 || command.contains('\n') || command.contains('\r'))
+            return automationError("gcode must be one non-empty line up to 512 characters");
+        QJsonObject error;
+        if (!automationReadOnlyCommand(command) && !automationRequiresArm(error)) return error;
+        sendCommand(command, -1, true);
+        auto response = automationStatus();
+        response["message"] = "Command queued";
+        return response;
+    }
+    if (path == "/api/v1/jog" || path == "/api/v1/move" || path == "/api/v1/home"
+        || path == "/api/v1/spindle" || path == "/api/v1/file/start" || path == "/api/v1/heightmap/start") {
+        QJsonObject error;
+        if (!automationRequiresArm(error)) return error;
+    }
+    if (path == "/api/v1/jog") {
+        const double x = request.value("x").toDouble();
+        const double y = request.value("y").toDouble();
+        const double z = request.value("z").toDouble();
+        const double feed = request.value("feed").toDouble();
+        if ((qAbs(x) > 10 || qAbs(y) > 10 || qAbs(z) > 10) || (qFuzzyIsNull(x) && qFuzzyIsNull(y) && qFuzzyIsNull(z)) || feed <= 0 || feed > 10000)
+            return automationError("jog requires a non-zero X/Y/Z delta within 10 mm and feed 1..10000 mm/min");
+        if (m_marlinProtocol)
+            sendCommands(QString("G21\nG91\nG0 X%1 Y%2 Z%3 F%4\nG90").arg(x, 0, 'f', 3).arg(y, 0, 'f', 3).arg(z, 0, 'f', 3).arg(feed, 0, 'f', 0));
+        else
+            sendCommand(QString("$J=G91X%1Y%2Z%3F%4").arg(x, 0, 'f', 3).arg(y, 0, 'f', 3).arg(z, 0, 'f', 3).arg(feed, 0, 'f', 0));
+        return automationStatus();
+    }
+    if (path == "/api/v1/move") {
+        QStringList axes;
+        for (const auto axis : { QString("x"), QString("y"), QString("z") })
+            if (request.contains(axis)) axes << axis.toUpper() + QString::number(request.value(axis).toDouble(), 'f', 3);
+        const double feed = request.value("feed").toDouble();
+        if (axes.isEmpty() || feed <= 0 || feed > 10000) return automationError("move requires X/Y/Z and feed 1..10000 mm/min");
+        sendCommands(QString("G21\nG90\nG0 %1 F%2").arg(axes.join(' ')).arg(feed, 0, 'f', 0));
+        return automationStatus();
+    }
+    if (path == "/api/v1/home") {
+        const auto axes = request.value("axes").toString().toUpper();
+        if (axes.isEmpty() || axes.contains(QRegularExpression("[^XYZ]"))) return automationError("home requires axes containing only X, Y, and/or Z");
+        sendCommand(m_marlinProtocol ? "G28 " + axes : "$H", -1, true);
+        return automationStatus();
+    }
+    if (path == "/api/v1/spindle") {
+        if (request.value("enabled").toBool()) {
+            const int speed = request.value("speed").toInt();
+            if (speed < 0 || speed > m_settings->spindleSpeedMax()) return automationError("spindle speed is outside configured range");
+            sendCommand(QString("M3 S%1").arg(speed), -1, true);
+        } else sendCommand("M5", -1, true);
+        return automationStatus();
+    }
+    if (path == "/api/v1/file/open") {
+        const auto fileName = request.value("path").toString();
+        if (fileName.isEmpty() || !QFileInfo::exists(fileName) || !isGCodeFile(fileName)) return automationError("path must name an existing G-code file");
+        loadFile(fileName);
+        return automationStatus();
+    }
+    if (path == "/api/v1/file/start") {
+        if (m_heightMapMode || m_programModel.rowCount() <= 1) return automationError("Load a normal G-code file before starting");
+        on_cmdFileSend_clicked();
+        return automationStatus();
+    }
+    if (path == "/api/v1/file/abort") {
+        on_cmdFileAbort_clicked();
+        return automationStatus();
+    }
+    if (path == "/api/v1/heightmap/configure") {
+        ui->txtHeightMapBorderX->setValue(request.value("x").toDouble());
+        ui->txtHeightMapBorderY->setValue(request.value("y").toDouble());
+        ui->txtHeightMapBorderWidth->setValue(request.value("width").toDouble());
+        ui->txtHeightMapBorderHeight->setValue(request.value("height").toDouble());
+        ui->txtHeightMapGridX->setValue(request.value("grid_x").toInt());
+        ui->txtHeightMapGridY->setValue(request.value("grid_y").toInt());
+        ui->txtHeightMapGridZTop->setValue(request.value("z_top").toDouble());
+        ui->txtHeightMapGridZBottom->setValue(request.value("z_bottom").toDouble());
+        ui->txtHeightMapProbeFeed->setValue(request.value("feed").toDouble());
+        if (!updateHeightMapGrid()) return automationError("Invalid heightmap geometry");
+        return automationStatus();
+    }
+    if (path == "/api/v1/heightmap/start") {
+        if (!m_heightMapMode) {
+            QSignalBlocker blocker(ui->cmdHeightMapMode);
+            ui->cmdHeightMapMode->setChecked(true);
+            on_cmdHeightMapMode_toggled(true);
+        }
+        if (m_probeModel.rowCount() <= 1) return automationError("Configure a heightmap grid before starting probe");
+        on_cmdFileSend_clicked();
+        return automationStatus();
+    }
+    return automationError("Unknown API endpoint");
+}
+
 void frmMain::grblReset()
 {
     if (m_marlinProtocol) {
@@ -4752,6 +5098,8 @@ frmMain::SendCommandResult frmMain::sendCommand(QString command, int tableIndex,
     if (uncomment.contains(G92))
         sendCommand(m_marlinProtocol ? "M114" : "$#", -3, showInConsole, true);
 
+    m_automationResponses.append("> " + command);
+    while (m_automationResponses.size() > 100) m_automationResponses.removeFirst();
     m_currentConnection->send(command);
 
     return SendDone;
