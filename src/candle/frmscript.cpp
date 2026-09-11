@@ -6,7 +6,6 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QDebug>
-#include <QScriptEngineDebugger>
 #include <QMainWindow>
 #include <QAction>
 #include "frmscript.h"
@@ -70,33 +69,12 @@ void frmScript::on_cmdSave_clicked()
 
 void frmScript::on_cmdStart_clicked()
 {
-    QScriptEngine se;
-
-    emit beforeScriptStart(se);
-
-    auto sv = se.evaluate(ui->txtScript->toPlainText());
-
-    if (sv.isError()) {
-        qCritical(scriptLogCategory) << "Error evaluating script" << sv.toString() << se.uncaughtExceptionBacktrace();
-    }
+    QMessageBox::information(this, windowTitle(), tr("The legacy QtScript runtime is not available in the Qt 6 modernization build. Use the local automation API and command profiles instead."));
 }
 
 void frmScript::on_cmdDebug_clicked()
 {
-    QScriptEngine se;
-    QScriptEngineDebugger sd(this);
-
-    sd.attachTo(&se);
-    sd.standardWindow()->setWindowIcon(this->windowIcon());
-    sd.action(QScriptEngineDebugger::InterruptAction)->trigger();
-
-    emit beforeScriptStart(se);
-
-    auto sv = se.evaluate(ui->txtScript->toPlainText());
-
-    if (sv.isError()) {
-        qCritical(scriptLogCategory) << "Error evaluating script" << sv.toString() << se.uncaughtExceptionBacktrace();
-    }
+    QMessageBox::information(this, windowTitle(), tr("The legacy QtScript debugger is not available in the Qt 6 modernization build."));
 }
 
 bool frmScript::saveChanges()

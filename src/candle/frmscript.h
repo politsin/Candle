@@ -3,7 +3,6 @@
 
 #pragma once
 #include <QFrame>
-#include <QScriptEngine>
 
 namespace Ui {
 class frmScript;
@@ -16,9 +15,6 @@ class frmScript : public QFrame
 public:
     explicit frmScript(QWidget *parent = 0);
     ~frmScript();
-
-signals:
-    void beforeScriptStart(QScriptEngine &engine);
 
 private slots:
     void on_cmdNew_clicked();

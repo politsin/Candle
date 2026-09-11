@@ -15,7 +15,9 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QProgressDialog>
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
 #include <QScriptEngine>
+#endif
 #include <QGroupBox>
 #include <QPalette>
 #include <QDateTime>
@@ -276,9 +278,13 @@ private slots:
     void onCboCommandReturnPressed();
     void onDockTopLevelChanged(bool topLevel);
     void onScrollBarAction(int action);
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     void onScriptException(const QScriptValue &exception);
+#endif
     void onActServiceProfilesSelected(bool checked);
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     void onBeforeScriptStart(QScriptEngine &engine);
+#endif
     void onTableHistoryChanged(QStringList history, int currentIndex);
 
     void updateHeightMapInterpolationDrawer(bool reset = false);
@@ -463,7 +469,9 @@ private:
     QVector4D m_jogVector;
 
     // Script
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     QScriptEngine m_scriptEngine;
+#endif
     ScriptApp* m_scriptApp;
 
     // TODO: remove
@@ -489,7 +497,9 @@ private:
     void initDrawers();
     void initProgramTable();
     void initScriptWrapper();
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     void initScriptEngine();
+#endif
 
     // Settings
     void preloadSettings();
@@ -588,7 +598,9 @@ private:
 
     static bool actionLessThan(const QAction *a1, const QAction *a2);
     static bool actionTextLessThan(const QAction *a1, const QAction *a2);
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     static QScriptValue importExtension(QScriptContext *context, QScriptEngine *engine);
+#endif
 };
 
 typedef QMap<QString, QList<QKeySequence>> ShortcutsMap;

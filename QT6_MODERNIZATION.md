@@ -3,8 +3,8 @@
 ## Target and non-negotiable rule
 
 The production branch currently builds with Qt 5.15.2 because Candle's legacy
-user-script ecosystem relies on QtScript.  The target for this track is Qt
-6.10.3, the current Qt 6.10 patch release at the time this document was added.
+user-script ecosystem relies on QtScript. The target for this track is Qt
+6.11.2, the current Qt 6.11 patch release at the time this document was updated.
 The migration must retain the operational CNC features: visual GUI,
 `candle-cli`, GRBL, Marlin, G-code parser, height map and the localhost
 automation API. It does **not** preserve the legacy QtScript plugin runtime.
@@ -59,7 +59,7 @@ services.
 5. **Port CMake/deployment.** Move resources, translations and plugins to Qt 6
    CMake APIs and update `windeployqt` packaging for both `candle.exe` and
    `candle-cli.exe`.
-6. **Bring up a Qt 6 build.** Install Qt 6.10.3 MSVC 2022 x64 (or a verified
+6. **Bring up a Qt 6 build.** Install Qt 6.11.2 MSVC 2022 x64 (or a verified
    vcpkg equivalent), compile, then run API/GUI/CLI smoke tests without a
    machine and with the controlled Marlin test stand.
 7. **Feature parity gate.** Only after GUI, CLI and API tests pass may the Qt
@@ -81,5 +81,5 @@ services.
 
 [Qt's official porting guide](https://doc.qt.io/qt-6/portingguide.html) notes
 that Qt 6 removes some Qt 5 modules and recommends resolving Qt 5.15
-deprecations before moving. [Qt 6.10.3 release information](https://www.qt.io/blog/tag/qt-6-10)
+deprecations before moving. [Qt 6.11 release information](https://www.qt.io/blog/qt-6-11-released)
 is available from Qt's official release pages.

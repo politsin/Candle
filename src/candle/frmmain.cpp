@@ -17,7 +17,9 @@
 #include <QDrag>
 #include <QMimeData>
 #include <QTranslator>
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
 #include <QScriptValueIterator>
+#endif
 #include <QSplitter>
 #include <QInputDialog>
 #include <QElapsedTimer>
@@ -70,7 +72,9 @@ frmMain::frmMain(QWidget *parent) : QMainWindow(parent), ui(new Ui::frmMain)
     initDrawers();
     initProgramTable();
     initScriptWrapper();
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     initScriptEngine();
+#endif
 
     // Load settings
     loadSettings();
@@ -411,6 +415,7 @@ void frmMain::initScriptWrapper()
     connect(this, &frmMain::pluginsLoaded, m_scriptApp, &ScriptApp::pluginsLoaded);
 }
 
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
 void frmMain::initScriptEngine()
 {
     // TODO: remove global script engine and related features
@@ -427,6 +432,7 @@ void frmMain::initScriptEngine()
     connect(&m_scriptEngine, &QScriptEngine::signalHandlerException, this, &frmMain::onScriptException);
     connect(ui->fraScript, &frmScript::beforeScriptStart, this, &frmMain::onBeforeScriptStart);
 }
+#endif
 
 frmMain::~frmMain()
 {
@@ -3372,11 +3378,13 @@ void frmMain::onScrollBarAction(int action)
         ui->chkAutoScroll->setChecked(false);
 }
 
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
 void frmMain::onScriptException(const QScriptValue &exception)
 {
     qCritical(scriptLogCategory) << "Script exception occurred in plugin path:" << exception.engine()->objectName()
         << exception.toString();
 }
+#endif
 
 void frmMain::onActServiceProfilesSelected(bool checked)
 {
@@ -3407,6 +3415,7 @@ void frmMain::onActServiceProfilesSelected(bool checked)
     ui->actServiceProfilesDelete->setEnabled(action != ui->actServiceProfilesDefault);
 }
 
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
 void frmMain::onBeforeScriptStart(QScriptEngine &engine)
 {
     // Delegate import extension function
@@ -3445,6 +3454,8 @@ void frmMain::onBeforeScriptStart(QScriptEngine &engine)
     // Translator
     engine.installTranslatorFunctions();
 }
+
+#endif
 
 void frmMain::onTableHistoryChanged(QStringList history, int currentIndex)
 {
@@ -3802,7 +3813,8 @@ void frmMain::storeSettings()
     set->setValue("collapsedPanels", collapsedPanels);
     set->setValue("formState", saveState());
 
-    // Save script variables
+    // Save legacy script variables
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     QScriptEngine e;
     QScriptValue d = e.globalObject();
     QScriptValueIterator i(d);
@@ -3824,9 +3836,10 @@ void frmMain::storeSettings()
         }
     }
 
+    delete scriptSet;
+#endif
     emit settingsSaved();
 
-    delete scriptSet;
     delete set;
 }
 
@@ -4057,7 +4070,8 @@ void frmMain::restoreSettings()
         if (a) a->setShortcuts(m.values().at(i));
     }
 
-    // Loading stored script variables
+    // Loading legacy script variables
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     QScriptValue g = m_scriptEngine.globalObject();
 
     // Clear script global object
@@ -4076,13 +4090,15 @@ void frmMain::restoreSettings()
         g.setProperty(k, m_scriptEngine.newVariant(scriptSet->value(k)));
     }
 
+    delete scriptSet;
+#endif
+
     // Update inverted slider controls
     auto sliders = this->findChildren<QSlider*>();
     foreach (auto slider, sliders) {
         slider->setInvertedControls(m_settings->invertedSliderControls());
     }
 
-    delete scriptSet;
     delete set;
 
     m_settingsLoading = false;
@@ -4499,6 +4515,7 @@ void frmMain::applySettings()
 
 void frmMain::loadPlugins()
 {
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     QString pluginsDir = qApp->applicationDirPath() + "/candleplugins/";
 
     // Get plugins list
@@ -4667,6 +4684,11 @@ void frmMain::loadPlugins()
             f.close();
         }
     }
+    emit pluginsLoaded();
+#else
+    qInfo(generalLogCategory) << "Legacy QtScript plugins are disabled in this build";
+    emit pluginsLoaded();
+#endif
 }
 
 void frmMain::startAutomationServer()
@@ -5143,6 +5165,7 @@ void frmMain::sendNextFileCommands() {
 
 QString frmMain::evaluateCommand(QString command)
 {
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     // Evaluate script
     static QRegularExpression rx("\\{(?:(?>[^\\{\\}])|(?0))*\\}");
     QRegularExpressionMatch m;
@@ -5156,6 +5179,9 @@ QString frmMain::evaluateCommand(QString command)
     }
 
     return command;
+#else
+    return command;
+#endif
 }
 
 void frmMain::updateParser()
@@ -6776,7 +6802,9 @@ bool frmMain::actionTextLessThan(const QAction *a1, const QAction *a2)
     return a1->text() < a2->text();
 }
 
+#ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
 QScriptValue frmMain::importExtension(QScriptContext *context, QScriptEngine *engine)
 {
     return engine->importExtension(context->argument(0).toString());
 }
+#endif

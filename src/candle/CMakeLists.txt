@@ -11,7 +11,11 @@ execute_process(
 configure_file(versionconfig.h.in versionconfig.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-find_package(Qt5 COMPONENTS Core Widgets OpenGL SerialPort Script ScriptTools LinguistTools Network WebSockets Help REQUIRED)
+set(CANDLE_QT_COMPONENTS Core Widgets OpenGL SerialPort LinguistTools Network WebSockets Help)
+if(CANDLE_ENABLE_LEGACY_SCRIPTS)
+    list(APPEND CANDLE_QT_COMPONENTS Script ScriptTools)
+endif()
+find_package(Qt5 COMPONENTS ${CANDLE_QT_COMPONENTS} REQUIRED)
 
 if(WIN32)
     find_package(Qt5 COMPONENTS WinExtras)
@@ -62,16 +66,28 @@ target_compile_definitions(candle PRIVATE
         _USE_MATH_DEFINES
         QT_NO_DEBUG
 )
+if(CANDLE_ENABLE_LEGACY_SCRIPTS)
+    target_compile_definitions(candle PRIVATE CANDLE_ENABLE_LEGACY_SCRIPTS)
+endif()
 if(WIN32)
     target_compile_definitions(candle-cli PRIVATE
             _USE_MATH_DEFINES
             QT_NO_DEBUG
     )
+    if(CANDLE_ENABLE_LEGACY_SCRIPTS)
+        target_compile_definitions(candle-cli PRIVATE CANDLE_ENABLE_LEGACY_SCRIPTS)
+    endif()
 endif()
 
-target_link_libraries(candle PRIVATE customwidgets Qt5::Core Qt5::Widgets Qt5::OpenGL Qt5::SerialPort Qt5::Script Qt5::ScriptTools Qt5::Network Qt5::WebSockets Qt5::Help)
+target_link_libraries(candle PRIVATE customwidgets Qt5::Core Qt5::Widgets Qt5::OpenGL Qt5::SerialPort Qt5::Network Qt5::WebSockets Qt5::Help)
+if(CANDLE_ENABLE_LEGACY_SCRIPTS)
+    target_link_libraries(candle PRIVATE Qt5::Script Qt5::ScriptTools)
+endif()
 if(WIN32)
-    target_link_libraries(candle-cli PRIVATE customwidgets Qt5::Core Qt5::Widgets Qt5::OpenGL Qt5::SerialPort Qt5::Script Qt5::ScriptTools Qt5::Network Qt5::WebSockets Qt5::Help)
+    target_link_libraries(candle-cli PRIVATE customwidgets Qt5::Core Qt5::Widgets Qt5::OpenGL Qt5::SerialPort Qt5::Network Qt5::WebSockets Qt5::Help)
+    if(CANDLE_ENABLE_LEGACY_SCRIPTS)
+        target_link_libraries(candle-cli PRIVATE Qt5::Script Qt5::ScriptTools)
+    endif()
 endif()
 
 # Main executable
@@ -157,12 +173,14 @@ add_custom_target(
 
 # Install
 # Candle plugins
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/candleplugins
-    DESTINATION ${GENERAL_DESTINATION}
-    FILES_MATCHING
-    PATTERN *.*
-    PATTERN *.pro EXCLUDE
-)
+if(CANDLE_ENABLE_LEGACY_SCRIPTS)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/candleplugins
+        DESTINATION ${GENERAL_DESTINATION}
+        FILES_MATCHING
+        PATTERN *.*
+        PATTERN *.pro EXCLUDE
+    )
+endif()
 
 # License
 install(FILES ${CMAKE_SOURCE_DIR}/LICENSE DESTINATION ${GENERAL_DESTINATION})
