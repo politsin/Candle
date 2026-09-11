@@ -7127,30 +7127,29 @@ void frmMain::updateConnectionBanner()
     QString transport;
     switch (m_settings->connectionType()) {
     case ConnectionType::SerialPort:
-        transport = tr("Serial") + " · " + m_settings->port() + " · " + QString::number(m_settings->baud());
+        transport = m_settings->port() + " · " + QString::number(m_settings->baud());
         break;
     case ConnectionType::Telnet:
-        transport = tr("Wi-Fi / TCP") + " · " + m_settings->telnetAddress() + ":" + QString::number(m_settings->telnetPort());
+        transport = tr("Wi-Fi") + " · " + m_settings->telnetAddress();
         break;
     case ConnectionType::WebSocket:
-        transport = tr("WebSocket") + " · " + m_settings->webSocketUrl();
+        transport = tr("WebSocket");
         break;
     }
 
     QString jobState;
     switch (m_senderState) {
-    case SenderTransferring: jobState = tr("G-code is running"); break;
-    case SenderPausing: jobState = tr("Pausing G-code"); break;
-    case SenderPaused: jobState = tr("G-code is paused"); break;
-    case SenderStopping: jobState = tr("Stopping G-code"); break;
-    case SenderChangingTool: jobState = tr("Waiting for tool change"); break;
-    default: jobState = tr("Ready to send"); break;
+    case SenderTransferring: jobState = tr("Running"); break;
+    case SenderPausing: jobState = tr("Pausing"); break;
+    case SenderPaused: jobState = tr("Paused"); break;
+    case SenderStopping: jobState = tr("Stopping"); break;
+    case SenderChangingTool: jobState = tr("Tool change"); break;
+    default: jobState = tr("Idle"); break;
     }
 
     const QString protocol = m_marlinProtocol ? "Marlin" : "GRBL";
-    const QString controllerState = m_statusCaptions.value(m_deviceState, tr("Unknown"));
-    m_connectionBanner->setText(transport + " · " + protocol + "\n"
-        + (connected ? tr("Connected") : tr("Not connected")) + " · " + controllerState + " · " + jobState);
+    m_connectionBanner->setText(transport + "\n" + protocol + " · "
+        + (connected ? jobState : tr("Offline")));
     m_connectionIndicator->setStyleSheet(connected
         ? "QLabel { background: #17813d; border: 1px solid #0f5a2a; border-radius: 1px; }"
         : "QLabel { background: #c22c3d; border: 1px solid #851b28; border-radius: 1px; }");
