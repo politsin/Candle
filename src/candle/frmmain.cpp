@@ -2866,6 +2866,7 @@ void frmMain::processMarlinPosition(const QString &data)
 
 void frmMain::onTimerConnection()
 {
+    if (qApp->property("automationNoAutoConnect").toBool()) return;
     if (m_currentConnection && !m_currentConnection->isConnected())
     {
         m_currentConnection->connect();
@@ -4481,7 +4482,7 @@ void frmMain::applySettings()
     }
 
     // Open connection if settings changed or new connection created
-    if (connectionSettingsChanged || newConnectionCreated) {
+    if ((connectionSettingsChanged || newConnectionCreated) && !qApp->property("automationNoAutoConnect").toBool()) {
         m_currentConnection->connect();
     }
 
@@ -4681,7 +4682,10 @@ void frmMain::startAutomationServer()
         }
     });
 
-    for (int port = 8090; port < 8190; ++port) {
+    const int requestedPort = qApp->property("automationPort").toInt();
+    const int firstPort = requestedPort > 0 ? requestedPort : 8090;
+    const int lastPort = requestedPort > 0 ? requestedPort : 8189;
+    for (int port = firstPort; port <= lastPort; ++port) {
         if (m_automationServer->listen(QHostAddress::LocalHost, port)) {
             m_automationPort = port;
             break;
@@ -4881,7 +4885,10 @@ QJsonObject frmMain::handleAutomationRequest(const QString &method, const QStrin
             m_settings->setConnectionType(ConnectionType::WebSocket);
             m_settings->setWebSocketUrl(url);
         } else return automationError("transport must be serial, telnet, or websocket");
+        qApp->setProperty("automationNoAutoConnect", false);
         applySettings();
+        if (m_currentConnection && !m_currentConnection->isConnected())
+            m_currentConnection->connect();
         storeSettings();
         auto response = automationStatus();
         response["message"] = "Connection settings applied; poll /readyz until ready";

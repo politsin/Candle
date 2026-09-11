@@ -18,6 +18,7 @@ if(WIN32)
 endif()
 
 file(GLOB_RECURSE SRC_FILES *.cpp)
+list(REMOVE_ITEM SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
 file(GLOB TS_FILES translations/*.ts)
 file(GLOB UI_FILES *.ui)
 
@@ -31,9 +32,12 @@ qt5_add_resources(RSC_FILES
 qt5_add_translation(QM_FILES ${TS_FILES})
 
 if(WIN32)
-    add_executable(candle ${SRC_FILES} ${RSC_FILES} ${QM_FILES} icon.rc)
+    add_executable(candle WIN32 ${SRC_FILES} main.cpp ${RSC_FILES} ${QM_FILES} icon.rc)
     target_link_libraries(candle PRIVATE Qt5::WinExtras)
     set_target_properties(candle PROPERTIES WIN32_EXECUTABLE ON)
+    add_executable(candle-cli ${SRC_FILES} main.cpp ${RSC_FILES} ${QM_FILES})
+    target_link_libraries(candle-cli PRIVATE Qt5::WinExtras)
+    target_compile_definitions(candle-cli PRIVATE CANDLE_CONSOLE)
 elseif(APPLE)
     set(APP_ICON_MACOS "${CMAKE_SOURCE_DIR}/src/candle/images/candle.icns")
     set_source_files_properties(${APP_ICON_MACOS} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
@@ -50,19 +54,34 @@ elseif(UNIX)
 endif()
 
 target_include_directories(candle PRIVATE . ../customwidgets)
+if(WIN32)
+    target_include_directories(candle-cli PRIVATE . ../customwidgets)
+endif()
 
 target_compile_definitions(candle PRIVATE
         _USE_MATH_DEFINES
         QT_NO_DEBUG
 )
+if(WIN32)
+    target_compile_definitions(candle-cli PRIVATE
+            _USE_MATH_DEFINES
+            QT_NO_DEBUG
+    )
+endif()
 
 target_link_libraries(candle PRIVATE customwidgets Qt5::Core Qt5::Widgets Qt5::OpenGL Qt5::SerialPort Qt5::Script Qt5::ScriptTools Qt5::Network Qt5::WebSockets Qt5::Help)
+if(WIN32)
+    target_link_libraries(candle-cli PRIVATE customwidgets Qt5::Core Qt5::Widgets Qt5::OpenGL Qt5::SerialPort Qt5::Script Qt5::ScriptTools Qt5::Network Qt5::WebSockets Qt5::Help)
+endif()
 
 # Main executable
 if(APPLE)
     install(TARGETS candle BUNDLE DESTINATION .)
 else()
     install(TARGETS candle RUNTIME DESTINATION .)
+    if(WIN32)
+        install(TARGETS candle-cli RUNTIME DESTINATION .)
+    endif()
 endif()
 
 # Translations

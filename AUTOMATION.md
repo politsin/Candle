@@ -22,6 +22,29 @@ Windows `pid`, executable path, process start time, Qt version and the API
 address.  Select the desired process by `instance_id` or its configured serial
 port / TCP host, rather than assuming that the first Candle window is right.
 
+## GUI and console modes
+
+`candle.exe` starts the ordinary visible operator UI.  The automation API
+controls that same process, so opening a file, jogging, or starting a job is
+immediately reflected in its Candle window.
+
+`candle-cli.exe` is the Windows-console companion.  It uses the same controller
+code and HTTP API but never shows the GUI, which makes it suitable for a test
+cell service:
+
+```powershell
+./candle-cli.exe --automation-port 8091
+```
+
+For safety, `candle-cli.exe` does not take over a controller stored in its
+settings profile until the caller sends `POST /api/v1/connect`. Pass `--connect`
+only when that takeover is intended. The visible GUI can similarly be started
+with `--no-connect`.
+
+The GUI executable also accepts `--headless` when a background process is
+desired.  Both forms bind only to `127.0.0.1`; `--automation-port` reserves a
+specific port, otherwise Candle selects the first free port from 8090..8189.
+
 ## Observability first
 
 `GET /healthz` says that the HTTP service is alive.

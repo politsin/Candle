@@ -11,6 +11,8 @@
 #include <QFontDatabase>
 #include <QMessageBox>
 #include <QDir>
+#include <QCommandLineParser>
+#include <QCommandLineOption>
 
 #include "parser/gcodepreprocessorutils.h"
 #include "parser/gcodeparser.h"
@@ -47,6 +49,42 @@ int main(int argc, char *argv[])
 #endif
     QApplication a(argc, argv);
 
+    QCommandLineParser commandLine;
+    commandLine.setApplicationDescription("Candle CNC controller");
+    commandLine.addHelpOption();
+    commandLine.addVersionOption();
+    QCommandLineOption headlessOption("headless", "Run without showing the Candle window; control it through the local automation API.");
+    QCommandLineOption apiPortOption("automation-port", "Bind automation API to this loopback TCP port (otherwise select the first free port from 8090).", "port");
+    QCommandLineOption noConnectOption("no-connect", "Do not connect to the controller at startup; use POST /api/v1/connect when ready.");
+    QCommandLineOption connectOption("connect", "Connect using the saved profile at startup (overrides the console safety default).");
+    commandLine.addOption(headlessOption);
+    commandLine.addOption(apiPortOption);
+    commandLine.addOption(noConnectOption);
+    commandLine.addOption(connectOption);
+    commandLine.process(a);
+
+#ifdef CANDLE_CONSOLE
+    const bool headless = true;
+    const bool noAutoConnect = !commandLine.isSet(connectOption);
+#else
+    const bool headless = commandLine.isSet(headlessOption);
+    const bool noAutoConnect = commandLine.isSet(noConnectOption);
+#endif
+    if (commandLine.isSet(noConnectOption) && commandLine.isSet(connectOption)) {
+        qCritical() << "--no-connect and --connect cannot be used together";
+        return 2;
+    }
+    a.setProperty("automationNoAutoConnect", noAutoConnect);
+    if (commandLine.isSet(apiPortOption)) {
+        bool isPort = false;
+        const int port = commandLine.value(apiPortOption).toInt(&isPort);
+        if (!isPort || port < 1 || port > 65535) {
+            qCritical() << "--automation-port must be a valid TCP port";
+            return 2;
+        }
+        a.setProperty("automationPort", port);
+    }
+
     a.setOrganizationName(APP_NAME);
     a.setApplicationName(APP_NAME);
     a.setApplicationDisplayName(APP_NAME);
@@ -74,7 +112,8 @@ int main(int argc, char *argv[])
     if (styles.open(QFile::ReadOnly))
         w.setStyleSheet(styles.readAll());
 
-    w.show();
+    if (!headless)
+        w.show();
 
     return a.exec();
 }
