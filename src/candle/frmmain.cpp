@@ -14,6 +14,7 @@
 #include <QShortcut>
 #include <QAction>
 #include <QActionGroup>
+#include <QLabel>
 #include <QLayout>
 #include <QDrag>
 #include <QMimeData>
@@ -233,6 +234,13 @@ void frmMain::initUi()
     setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
 
     ui->widgetHeightmapSettings->setVisible(false);
+
+    m_connectionBanner = new QLabel(ui->grpState);
+    m_connectionBanner->setObjectName("connectionBanner");
+    m_connectionBanner->setAlignment(Qt::AlignCenter);
+    m_connectionBanner->setWordWrap(true);
+    m_connectionBanner->setMinimumHeight(76);
+    ui->verticalLayout_6->insertWidget(0, m_connectionBanner);
 
     ui->cmdXMinus->setBackColor(QColor(153, 180, 209));
     ui->cmdXPlus->setBackColor(ui->cmdXMinus->backColor());
@@ -4724,6 +4732,7 @@ void frmMain::startAutomationServer()
             break;
         }
     }
+    updateConnectionBanner();
     if (!m_automationPort) {
         m_automationLastError = tr("Automation API cannot listen on a local port: ")
             + m_automationServer->errorString();
@@ -5837,6 +5846,8 @@ void frmMain::updateControlsState() {
     bool process = (m_senderState == SenderTransferring) || (m_senderState == SenderStopping) || m_sdRun;
     bool paused = (m_senderState == SenderPausing) || (m_senderState == SenderPaused) || (m_senderState == SenderChangingTool);
 
+    updateConnectionBanner();
+
     ui->grpState->setEnabled(portOpened);
     ui->grpControl->setEnabled(portOpened);
     ui->widgetSpindle->setEnabled(portOpened);
@@ -6819,3 +6830,42 @@ QScriptValue frmMain::importExtension(QScriptContext *context, QScriptEngine *en
     return engine->importExtension(context->argument(0).toString());
 }
 #endif
+
+void frmMain::updateConnectionBanner()
+{
+    if (!m_connectionBanner) return;
+
+    const bool connected = m_currentConnection && m_currentConnection->isConnected();
+    QString transport;
+    switch (m_settings->connectionType()) {
+    case ConnectionType::SerialPort:
+        transport = tr("Serial") + " · " + m_settings->port() + " · " + QString::number(m_settings->baud());
+        break;
+    case ConnectionType::Telnet:
+        transport = tr("Wi-Fi / TCP") + " · " + m_settings->telnetAddress() + ":" + QString::number(m_settings->telnetPort());
+        break;
+    case ConnectionType::WebSocket:
+        transport = tr("WebSocket") + " · " + m_settings->webSocketUrl();
+        break;
+    }
+
+    QString jobState;
+    switch (m_senderState) {
+    case SenderTransferring: jobState = tr("G-code is running"); break;
+    case SenderPausing: jobState = tr("Pausing G-code"); break;
+    case SenderPaused: jobState = tr("G-code is paused"); break;
+    case SenderStopping: jobState = tr("Stopping G-code"); break;
+    case SenderChangingTool: jobState = tr("Waiting for tool change"); break;
+    default: jobState = tr("Ready to send"); break;
+    }
+
+    const QString protocol = m_marlinProtocol ? "Marlin" : "GRBL";
+    const QString controllerState = m_statusCaptions.value(m_deviceState, tr("Unknown"));
+    m_connectionBanner->setText(
+        (connected ? tr("CONNECTED") : tr("NOT CONNECTED")) + "\n"
+        + transport + "\n"
+        + protocol + " · " + controllerState + " · " + jobState);
+    m_connectionBanner->setStyleSheet(connected
+        ? "QLabel { background: #0f6b35; color: white; border: 2px solid #0b4d27; border-radius: 5px; font-size: 13px; font-weight: 700; padding: 6px; }"
+        : "QLabel { background: #a51d2d; color: white; border: 2px solid #751420; border-radius: 5px; font-size: 13px; font-weight: 700; padding: 6px; }");
+}

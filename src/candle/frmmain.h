@@ -357,6 +357,7 @@ private:
 
     QMenu *m_tableMenu;
     QMessageBox* m_senderErrorBox;
+    QLabel *m_connectionBanner;
 #if defined(Q_OS_WIN) && QT_VERSION_MAJOR < 6
     QWinTaskbarButton *m_taskBarButton;
     QWinTaskbarProgress *m_taskBarProgress;
@@ -572,6 +573,7 @@ private:
     void scrollToTableIndex(QModelIndex index);
     bool eventFilter(QObject *obj, QEvent *event);
     void updateSliderProgramMaxValue();
+    void updateConnectionBanner();
     void resetTableSelection();
     void adjustButtonIconColors();
 

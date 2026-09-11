@@ -227,6 +227,50 @@
         <translation>Нет соединения</translation>
     </message>
     <message>
+        <source>CONNECTED</source>
+        <translation>ПОДКЛЮЧЕНО</translation>
+    </message>
+    <message>
+        <source>NOT CONNECTED</source>
+        <translation>НЕ ПОДКЛЮЧЕНО</translation>
+    </message>
+    <message>
+        <source>Serial</source>
+        <translation>Последовательный порт</translation>
+    </message>
+    <message>
+        <source>Wi-Fi / TCP</source>
+        <translation>Wi-Fi / TCP</translation>
+    </message>
+    <message>
+        <source>WebSocket</source>
+        <translation>WebSocket</translation>
+    </message>
+    <message>
+        <source>G-code is running</source>
+        <translation>G-code выполняется</translation>
+    </message>
+    <message>
+        <source>Pausing G-code</source>
+        <translation>Пауза G-code</translation>
+    </message>
+    <message>
+        <source>G-code is paused</source>
+        <translation>G-code на паузе</translation>
+    </message>
+    <message>
+        <source>Stopping G-code</source>
+        <translation>Остановка G-code</translation>
+    </message>
+    <message>
+        <source>Waiting for tool change</source>
+        <translation>Ожидание смены инструмента</translation>
+    </message>
+    <message>
+        <source>Ready to send</source>
+        <translation>Готово к отправке</translation>
+    </message>
+    <message>
         <source>Unlock</source>
         <translation>Разблокировать</translation>
     </message>
