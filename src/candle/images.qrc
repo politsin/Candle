@@ -45,5 +45,9 @@
     <file>images/num4.png</file>
     <file>images/handle2s1.png</file>
     <file>images/brake.png</file>
+    <file alias="usercommands/axis_zero.png">../candleplugins/usercommands/images/axis_zero.png</file>
+    <file alias="usercommands/zero_z.png">../candleplugins/usercommands/images/zero_z.png</file>
+    <file alias="usercommands/search_for_z.png">../candleplugins/usercommands/images/search_for_z.png</file>
+    <file alias="usercommands/safe_z.png">../candleplugins/usercommands/images/safe_z.png</file>
   </qresource>
 </RCC>

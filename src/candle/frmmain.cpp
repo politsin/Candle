@@ -18,6 +18,15 @@
 #include <QLayout>
 #include <QGridLayout>
 #include <QPushButton>
+#include <QToolButton>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QTableWidget>
+#include <QHeaderView>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QStyle>
+#include <QIcon>
 #include <QDrag>
 #include <QMimeData>
 #include <QTranslator>
@@ -85,6 +94,7 @@ frmMain::frmMain(QWidget *parent) : QMainWindow(parent), ui(new Ui::frmMain)
 
     // Load settings
     loadSettings();
+    loadUserCommands();
     setSenderState(SenderStopped);
     updateControlsState();
     startAutomationServer();
@@ -281,6 +291,21 @@ void frmMain::initUi()
     motorsLayout->setColumnStretch(1, 1);
     motorsLayout->setColumnStretch(2, 1);
     static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, motorsGroup);
+
+    m_userCommandsGroup = new QGroupBox(tr("User commands"), ui->scrollContentsUser);
+    m_userCommandsGroup->setObjectName("grpUserCommands");
+    m_userCommandsGroup->setCheckable(true);
+    m_userCommandsGroup->setChecked(true);
+    m_userCommandsLayout = new QGridLayout(m_userCommandsGroup);
+    m_userCommandsLayout->setContentsMargins(6, 4, 6, 6);
+    m_userCommandsLayout->setHorizontalSpacing(4);
+    m_userCommandsLayout->setVerticalSpacing(4);
+    for (int column = 0; column < 3; ++column) m_userCommandsLayout->setColumnStretch(column, 1);
+    m_userCommandsConfigureButton = new QPushButton(tr("Configure…"), m_userCommandsGroup);
+    m_userCommandsConfigureButton->setToolTip(tr("Configure user commands, labels and icons"));
+    connect(m_userCommandsConfigureButton, &QPushButton::clicked,
+        this, &frmMain::onUserCommandsConfigureClicked);
+    static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, m_userCommandsGroup);
 
     ui->cmdXMinus->setBackColor(QColor(153, 180, 209));
     ui->cmdXPlus->setBackColor(ui->cmdXMinus->backColor());
@@ -1990,6 +2015,116 @@ void frmMain::onUserMotorDisableClicked()
     sendCommand(button->property("gcode").toString(), -1, m_settings->showUICommands());
 }
 
+void frmMain::onUserCommandClicked()
+{
+    auto *button = qobject_cast<QToolButton *>(sender());
+    if (!button || m_senderState != SenderStopped || m_sdRun) return;
+
+    // Commands are only sent after a deliberate local click. Unlike the old
+    // plugin, this contains no eval()/JavaScript execution path.
+    sendCommands(button->property("gcode").toString());
+}
+
+void frmMain::onUserCommandsConfigureClicked()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Configure user commands"));
+    dialog.setWindowModality(Qt::WindowModal);
+    dialog.resize(720, 420);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *hint = new QLabel(tr("Each button sends its command exactly as written. One command per line. "
+        "Choose a built-in icon or select an image file."), &dialog);
+    hint->setWordWrap(true);
+    layout->addWidget(hint);
+
+    auto *table = new QTableWidget(&dialog);
+    table->setColumnCount(3);
+    table->setHorizontalHeaderLabels({tr("Label"), tr("Command"), tr("Icon")});
+    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->verticalHeader()->setVisible(false);
+
+    const auto populate = [table](const QVariantList &commands) {
+        table->setRowCount(0);
+        for (const auto &value : commands) {
+            const auto command = value.toMap();
+            const int row = table->rowCount();
+            table->insertRow(row);
+            table->setItem(row, 0, new QTableWidgetItem(command.value("label").toString()));
+            table->setItem(row, 1, new QTableWidgetItem(command.value("command").toString()));
+            table->setItem(row, 2, new QTableWidgetItem(command.value("icon").toString()));
+        }
+    };
+    populate(m_userCommands);
+    layout->addWidget(table);
+
+    auto *toolsLayout = new QHBoxLayout;
+    auto *addButton = new QPushButton(tr("Add"), &dialog);
+    auto *removeButton = new QPushButton(tr("Remove"), &dialog);
+    auto *iconButton = new QPushButton(tr("Choose icon…"), &dialog);
+    auto *defaultsButton = new QPushButton(tr("Restore defaults"), &dialog);
+    toolsLayout->addWidget(addButton);
+    toolsLayout->addWidget(removeButton);
+    toolsLayout->addWidget(iconButton);
+    toolsLayout->addStretch();
+    toolsLayout->addWidget(defaultsButton);
+    layout->addLayout(toolsLayout);
+
+    connect(addButton, &QPushButton::clicked, &dialog, [table] {
+        const int row = table->rowCount();
+        table->insertRow(row);
+        table->setItem(row, 0, new QTableWidgetItem(QObject::tr("New command")));
+        table->setItem(row, 1, new QTableWidgetItem);
+        table->setItem(row, 2, new QTableWidgetItem("command"));
+        table->setCurrentCell(row, 0);
+    });
+    connect(removeButton, &QPushButton::clicked, &dialog, [table] {
+        if (table->currentRow() >= 0) table->removeRow(table->currentRow());
+    });
+    connect(iconButton, &QPushButton::clicked, &dialog, [this, table, &dialog] {
+        const int row = table->currentRow();
+        if (row < 0) return;
+        const QStringList icons { "zero-xy", "zero-z", "probe-z", "safe-z", "spindle-off", "status", "command", tr("Image file…") };
+        bool accepted = false;
+        const QString chosen = QInputDialog::getItem(&dialog, tr("Choose icon"), tr("Icon"), icons, 0, false, &accepted);
+        if (!accepted) return;
+        QString icon = chosen;
+        if (chosen == tr("Image file…")) {
+            const QString fileName = QFileDialog::getOpenFileName(&dialog, tr("Choose icon image"), QString(),
+                tr("Images (*.png *.jpg *.jpeg *.bmp *.ico)"));
+            if (fileName.isEmpty()) return;
+            icon = "file:" + fileName;
+        }
+        table->item(row, 2)->setText(icon);
+    });
+    connect(defaultsButton, &QPushButton::clicked, &dialog, [this, populate] { populate(defaultUserCommands()); });
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    QVariantList commands;
+    for (int row = 0; row < table->rowCount(); ++row) {
+        const auto label = table->item(row, 0)->text().trimmed();
+        const auto command = table->item(row, 1)->text().trimmed();
+        const auto icon = table->item(row, 2)->text().trimmed();
+        if (!label.isEmpty() && !command.isEmpty()) commands.append(QVariantMap {
+            {"label", label}, {"command", command}, {"icon", icon.isEmpty() ? "command" : icon}
+        });
+    }
+    m_userCommands = commands;
+    saveUserCommands();
+    rebuildUserCommands();
+    updateControlsState();
+}
+
 void frmMain::on_tblProgram_customContextMenuRequested(const QPoint &pos)
 {
     if (m_senderState != SenderStopped) return;
@@ -3680,6 +3815,88 @@ void frmMain::loadSettings()
     set.endGroup();
 
     m_settingsLoading = false;
+}
+
+QVariantList frmMain::defaultUserCommands() const
+{
+    // These are the four ready-made commands which shipped with the former
+    // User Commands plugin. Probe Z and Safe Z can move hardware, so they are
+    // normal editable buttons, never automatic actions.
+    return {
+        QVariantMap {{"label", tr("Zero XY")}, {"command", "G92 X0 Y0"}, {"icon", "zero-xy"}},
+        QVariantMap {{"label", tr("Zero Z")}, {"command", "G92 Z0"}, {"icon", "zero-z"}},
+        QVariantMap {{"label", tr("Probe Z")}, {"command", "G21 G91\nG38.2 Z-30 F100\nG0 Z1\nG38.2 Z-2 F10\nG92 Z0\nG91 G0 Z5"}, {"icon", "probe-z"}},
+        QVariantMap {{"label", tr("Safe Z")}, {"command", "G53 G90 G0 Z0"}, {"icon", "safe-z"}}
+    };
+}
+
+void frmMain::loadUserCommands()
+{
+    QSettings settings;
+    settings.beginGroup("General");
+    m_userCommands = settings.value("userCommandsV1").toList();
+    settings.endGroup();
+    if (m_userCommands.isEmpty()) {
+        m_userCommands = defaultUserCommands();
+        saveUserCommands();
+    }
+    rebuildUserCommands();
+}
+
+void frmMain::saveUserCommands() const
+{
+    QSettings settings;
+    settings.beginGroup("General");
+    settings.setValue("userCommandsV1", m_userCommands);
+    settings.endGroup();
+}
+
+QIcon frmMain::userCommandIcon(const QString &iconName) const
+{
+    if (iconName.startsWith("file:")) {
+        const QIcon icon(iconName.mid(5));
+        if (!icon.isNull()) return icon;
+    }
+
+    if (iconName == "zero-xy") return QIcon(":/usercommands/axis_zero.png");
+    if (iconName == "zero-z") return QIcon(":/usercommands/zero_z.png");
+    if (iconName == "probe-z") return QIcon(":/usercommands/search_for_z.png");
+    if (iconName == "safe-z") return QIcon(":/usercommands/safe_z.png");
+    if (iconName == "spindle-off") return style()->standardIcon(QStyle::SP_MediaStop);
+    if (iconName == "status") return style()->standardIcon(QStyle::SP_BrowserReload);
+    return style()->standardIcon(QStyle::SP_CommandLink);
+}
+
+void frmMain::rebuildUserCommands()
+{
+    if (!m_userCommandsLayout) return;
+
+    while (auto *item = m_userCommandsLayout->takeAt(0)) {
+        if (auto *widget = item->widget()) widget->deleteLater();
+        delete item;
+    }
+    m_userCommandButtons.clear();
+
+    for (int index = 0; index < m_userCommands.size(); ++index) {
+        const auto command = m_userCommands.at(index).toMap();
+        auto *button = new QToolButton(m_userCommandsGroup);
+        const auto label = command.value("label").toString();
+        const auto code = command.value("command").toString();
+        button->setText(label);
+        button->setIcon(userCommandIcon(command.value("icon").toString()));
+        button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+        button->setIconSize(QSize(26, 26));
+        button->setMinimumHeight(56);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        button->setProperty("gcode", code);
+        button->setToolTip(QString("%1\n%2").arg(label, code));
+        connect(button, &QToolButton::clicked, this, &frmMain::onUserCommandClicked);
+        m_userCommandsLayout->addWidget(button, index / 3, index % 3);
+        m_userCommandButtons.append(button);
+    }
+
+    const int configRow = (m_userCommands.size() + 2) / 3;
+    m_userCommandsLayout->addWidget(m_userCommandsConfigureButton, configRow, 0, 1, 3);
 }
 
 void frmMain::saveSettings()
@@ -5919,6 +6136,9 @@ void frmMain::updateControlsState() {
     const bool motorDisableAvailable = portOpened && m_resetCompleted
         && m_senderState == SenderStopped && !m_sdRun;
     for (auto *button : m_motorDisableButtons) button->setEnabled(motorDisableAvailable);
+    const bool userCommandAvailable = portOpened && m_resetCompleted
+        && m_senderState == SenderStopped && !m_sdRun;
+    for (auto *button : m_userCommandButtons) button->setEnabled(userCommandAvailable);
     ui->widgetJog->setEnabled(portOpened && ((m_senderState == SenderStopped)
         || (m_senderState == SenderChangingTool)) && !m_sdRun);
     ui->cboCommand->setEnabled(portOpened && (!ui->chkKeyboardControl->isChecked()));

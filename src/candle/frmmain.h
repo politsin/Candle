@@ -74,6 +74,9 @@ class frmProgram;
 class QTcpServer;
 class QTcpSocket;
 class QPushButton;
+class QToolButton;
+class QGridLayout;
+class QIcon;
 
 struct CommandAttributes {
     int length;
@@ -251,6 +254,8 @@ private slots:
     void on_cmdAPlusY_released();
     void on_cmdStop_clicked();
     void onUserMotorDisableClicked();
+    void onUserCommandClicked();
+    void onUserCommandsConfigureClicked();
     void on_tblProgram_customContextMenuRequested(const QPoint &pos);
     void on_mnuViewWindows_aboutToShow();
     void on_mnuViewPanels_aboutToShow();
@@ -362,6 +367,11 @@ private:
     QLabel *m_connectionBanner;
     QLabel *m_connectionIndicator;
     QList<QPushButton *> m_motorDisableButtons;
+    QGroupBox *m_userCommandsGroup;
+    QGridLayout *m_userCommandsLayout;
+    QPushButton *m_userCommandsConfigureButton;
+    QList<QToolButton *> m_userCommandButtons;
+    QVariantList m_userCommands;
 #if defined(Q_OS_WIN) && QT_VERSION_MAJOR < 6
     QWinTaskbarButton *m_taskBarButton;
     QWinTaskbarProgress *m_taskBarProgress;
@@ -506,6 +516,14 @@ private:
 #ifdef CANDLE_ENABLE_LEGACY_SCRIPTS
     void initScriptEngine();
 #endif
+
+    // User commands replace the legacy QtScript usercommands plugin. They
+    // are configured as data, never as executable scripts.
+    QVariantList defaultUserCommands() const;
+    void loadUserCommands();
+    void saveUserCommands() const;
+    void rebuildUserCommands();
+    QIcon userCommandIcon(const QString &iconName) const;
 
     // Settings
     void preloadSettings();
