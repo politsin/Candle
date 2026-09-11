@@ -11,7 +11,7 @@ execute_process(
 configure_file(versionconfig.h.in versionconfig.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-set(CANDLE_QT_COMPONENTS Core Widgets OpenGL SerialPort LinguistTools Network WebSockets Help)
+set(CANDLE_QT_COMPONENTS Core Widgets OpenGL OpenGLWidgets SerialPort LinguistTools Network WebSockets Help)
 if(CANDLE_ENABLE_LEGACY_SCRIPTS)
     list(APPEND CANDLE_QT_COMPONENTS Script ScriptTools)
 endif()
@@ -85,7 +85,7 @@ if(WIN32)
     endif()
 endif()
 
-target_link_libraries(candle PRIVATE customwidgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::OpenGL Qt${QT_VERSION_MAJOR}::SerialPort Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets Qt${QT_VERSION_MAJOR}::Help)
+target_link_libraries(candle PRIVATE customwidgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::OpenGL Qt${QT_VERSION_MAJOR}::OpenGLWidgets Qt${QT_VERSION_MAJOR}::SerialPort Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets Qt${QT_VERSION_MAJOR}::Help)
 if(QT_VERSION_MAJOR EQUAL 6)
     target_link_libraries(candle PRIVATE Qt6::Core5Compat)
 endif()
@@ -93,7 +93,7 @@ if(CANDLE_ENABLE_LEGACY_SCRIPTS)
     target_link_libraries(candle PRIVATE Qt5::Script Qt5::ScriptTools)
 endif()
 if(WIN32)
-    target_link_libraries(candle-cli PRIVATE customwidgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::OpenGL Qt${QT_VERSION_MAJOR}::SerialPort Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets Qt${QT_VERSION_MAJOR}::Help)
+    target_link_libraries(candle-cli PRIVATE customwidgets Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::OpenGL Qt${QT_VERSION_MAJOR}::OpenGLWidgets Qt${QT_VERSION_MAJOR}::SerialPort Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets Qt${QT_VERSION_MAJOR}::Help)
     if(QT_VERSION_MAJOR EQUAL 6)
         target_link_libraries(candle-cli PRIVATE Qt6::Core5Compat)
     endif()
@@ -122,9 +122,11 @@ endif()
 install(FILES ${QM_FILES} DESTINATION ${TRANSLATIONS_DESTINATION})
 
 # Base translations
-get_target_property(QT5_QMAKE_EXECUTABLE Qt5::qmake IMPORTED_LOCATION)
+get_target_property(QT_QMAKE_EXECUTABLE Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
+get_filename_component(QT_BIN_DIR "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
+set(QT_HELPGENERATOR_EXECUTABLE "${QT_BIN_DIR}/qhelpgenerator${CMAKE_EXECUTABLE_SUFFIX}")
 execute_process(
-    COMMAND "${QT5_QMAKE_EXECUTABLE}" -query QT_INSTALL_TRANSLATIONS
+    COMMAND "${QT_QMAKE_EXECUTABLE}" -query QT_INSTALL_TRANSLATIONS
     OUTPUT_VARIABLE QT_TRANSLATIONS_DIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
@@ -176,7 +178,7 @@ add_custom_target(
 # Docs
 add_custom_target(
     docs
-    COMMAND $<TARGET_FILE:Qt${QT_VERSION_MAJOR}::qhelpgenerator>
+    COMMAND "${QT_HELPGENERATOR_EXECUTABLE}"
         ${CMAKE_SOURCE_DIR}/help/candle.qhcp
         -o ${CMAKE_SOURCE_DIR}/help/candle.qhc
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -207,7 +209,7 @@ endif()
 
 # Plugins
 if(APPLE)
-    get_target_property(QT_QMAKE_EXECUTABLE Qt5::qmake IMPORTED_LOCATION)
+    get_target_property(QT_QMAKE_EXECUTABLE Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
     execute_process(
         COMMAND ${QT_QMAKE_EXECUTABLE} -query QT_INSTALL_PLUGINS
         OUTPUT_VARIABLE QT_PLUGINS_DIR

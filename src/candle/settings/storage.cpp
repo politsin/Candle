@@ -1,6 +1,7 @@
 #include "storage.h"
 #include "storagegroup.h"
 #include <QDataStream>
+#include <QIODevice>
 
 Storage::Storage(QObject *parent) : QObject(parent)
 {

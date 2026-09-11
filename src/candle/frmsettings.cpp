@@ -20,6 +20,8 @@
 #include <QJsonArray>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QRegularExpression>
+#include <algorithm>
 
 class CustomKeySequenceEdit : public QKeySequenceEdit
 {
@@ -104,10 +106,11 @@ frmSettings::frmSettings(QWidget *parent) :
     QDir d(qApp->applicationDirPath() + "/translations");
     QStringList fl = QStringList() << "candle_*.qm";
     QStringList tl = d.entryList(fl, QDir::Files);
-    QRegExp fx("_([^\\.]+)");
+    QRegularExpression fx("_([^\\.]+)");
     foreach (const QString &t, tl) {
-        if (fx.indexIn(t) != -1) {
-            QLocale l(fx.cap(1));
+        const auto match = fx.match(t);
+        if (match.hasMatch()) {
+            QLocale l(match.captured(1));
             ui->cboLanguage->addItem(l.nativeLanguageName(), l.name().left(2));
         }
     }
@@ -180,7 +183,7 @@ void frmSettings::addCustomSettings(QGroupBox *box)
 
     page->setLayout(pageLayout);
     pageLayout->addWidget(box);
-    pageLayout->setMargin(0);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
 
     ui->stackMain->addWidget(page);
     ui->listCategories->addItem(box->title());
@@ -376,7 +379,7 @@ void frmSettings::setLaserPowerMax(int value)
 
 QStringList frmSettings::jogSteps()
 {
-    return ui->txtJogSteps->text().split(QRegExp("\\s*,\\s*"));
+    return ui->txtJogSteps->text().split(QRegularExpression("\\s*,\\s*"));
 }
 
 void frmSettings::setJogSteps(QStringList steps)
@@ -386,7 +389,7 @@ void frmSettings::setJogSteps(QStringList steps)
 
 QStringList frmSettings::jogFeeds()
 {
-    return ui->txtJogFeeds->text().split(QRegExp("\\s*,\\s"));
+    return ui->txtJogFeeds->text().split(QRegularExpression("\\s*,\\s*"));
 }
 
 void frmSettings::setJogFeeds(QStringList feeds)
@@ -846,7 +849,7 @@ void frmSettings::setShortcuts(QList<QAction*> acts)
     table->verticalHeader()->setDefaultAlignment(Qt::AlignCenter);
     table->verticalHeader()->setFixedWidth(table->verticalHeader()->sizeHint().width() + 11);
 
-    qSort(acts.begin(), acts.end(), [] (QAction *a1, QAction *a2) { return a1->objectName() < a2->objectName(); });
+    std::sort(acts.begin(), acts.end(), [] (QAction *a1, QAction *a2) { return a1->objectName() < a2->objectName(); });
     for (int i = 0; i < acts.count(); i++) {
         table->setItem(i, 0, new QTableWidgetItem(acts.at(i)->objectName()));
         table->setItem(i, 1, new QTableWidgetItem(acts.at(i)->text().remove("&")));

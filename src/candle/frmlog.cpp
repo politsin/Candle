@@ -2,6 +2,7 @@
 // Copyright 2015-2025 Hayrullin Denis Ravilevich
 
 #include <QFileSystemWatcher>
+#include <QFile>
 #include <QTextStream>
 #include <QStandardPaths>
 #include "frmlog.h"

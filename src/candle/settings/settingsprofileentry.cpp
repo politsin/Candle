@@ -16,7 +16,9 @@ QDataStream &operator>>(QDataStream &in, SettingsProfileEntry &e)
 static void registerTypes()
 {
     qRegisterMetaType<SettingsProfileEntry>();
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     qRegisterMetaTypeStreamOperators<SettingsProfileEntry>("SettingsProfileEntry");
     QMetaType::registerDebugStreamOperator<SettingsProfileEntry>();
+#endif
 }
 Q_CONSTRUCTOR_FUNCTION(registerTypes)

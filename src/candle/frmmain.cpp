@@ -13,6 +13,7 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QAction>
+#include <QActionGroup>
 #include <QLayout>
 #include <QDrag>
 #include <QMimeData>
@@ -36,6 +37,9 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUuid>
+#include <QtCore5Compat/QRegExp>
+#include <QRegularExpression>
+#include <algorithm>
 #include "frmmain.h"
 #include "theme.h"
 #include "ui_frmmain.h"
@@ -673,7 +677,7 @@ void frmMain::on_actFileExit_triggered()
 
 void frmMain::on_actServiceSettings_triggered()
 {
-    m_settings->setShortcuts(findChildren<QAction*>(QRegExp("act.*")));
+    m_settings->setShortcuts(findChildren<QAction*>(QRegularExpression("act.*")));
 
     emit settingsAboutToShow();
 
@@ -762,7 +766,8 @@ void frmMain::on_actViewLockWindows_toggled(bool checked)
     QList<QDockWidget*> dl = findChildren<QDockWidget*>();
 
     foreach (QDockWidget *d, dl) {
-        d->setFeatures(checked ? QDockWidget::NoDockWidgetFeatures : QDockWidget::AllDockWidgetFeatures);
+        d->setFeatures(checked ? QDockWidget::NoDockWidgetFeatures :
+            QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     }
 }
 
@@ -830,7 +835,9 @@ void frmMain::on_actServiceProfilesImport_triggered()
         return;
 
     QSettings set(fileName, QSettings::IniFormat);
+#if QT_VERSION_MAJOR < 6
     set.setIniCodec("UTF8");
+#endif
     auto profiles = set.value("profiles").toList();
 
     QStringList profileNames;
@@ -923,7 +930,9 @@ void frmMain::on_actServiceProfilesExport_triggered()
     }
 
     QSettings set(fileName, QSettings::IniFormat);
+#if QT_VERSION_MAJOR < 6
     set.setIniCodec("UTF8");
+#endif
     set.setValue("profiles", profiles);
 }
 
@@ -935,7 +944,7 @@ void frmMain::on_cmdFileOpen_clicked()
         QString fileName  = QFileDialog::getOpenFileName(this, tr("Open"), m_lastFolder,
                                    tr("G-Code files (*.nc *.ncc *.ngc *.tap *.txt *.gcode);;All files (*.*)"));
 
-        if (!fileName.isEmpty()) m_lastFolder = fileName.left(fileName.lastIndexOf(QRegExp("[/\\\\]+")));
+        if (!fileName.isEmpty()) m_lastFolder = fileName.left(fileName.lastIndexOf(QRegularExpression("[/\\\\]+")));
 
         if (fileName != "") {
             addRecentFile(fileName);
@@ -1917,7 +1926,7 @@ void frmMain::on_cmdAPlusY_released()
 
 void frmMain::on_cmdStop_clicked()
 {
-    m_jogVector = QVector3D(0, 0, 0);
+    m_jogVector = QVector4D(0, 0, 0, 0);
     m_queue.clear();
     if (m_marlinProtocol) m_currentConnection->send("M410");
     else m_currentConnection->send("\x85");
@@ -1943,7 +1952,7 @@ void frmMain::on_mnuViewWindows_aboutToShow()
         al.append(a);
     }
 
-    qSort(al.begin(), al.end(), frmMain::actionTextLessThan);
+    std::sort(al.begin(), al.end(), frmMain::actionTextLessThan);
 
     ui->mnuViewWindows->clear();
     ui->mnuViewWindows->addActions(al);
@@ -2467,7 +2476,7 @@ void frmMain::onConnectionDataReceived(QString data)
                 }
 
                 // Clear command buffer on "M2" & "M30" command (old firmwares)
-                static QRegExp M230("(M0*2|M30)(?!\\d)");
+                static QRegularExpression M230("(M0*2|M30)(?!\\d)");
                 if (uncomment.contains(M230) && response.contains("ok") && !response.contains("Pgm End")) {
                     m_commands.clear();
                     m_queue.clear();
@@ -2523,7 +2532,7 @@ void frmMain::onConnectionDataReceived(QString data)
                 }
 
                 // Change state query time on check mode on
-                if (uncomment.contains(QRegExp("$[cC]"))) {
+                if (uncomment.contains(QRegularExpression("\\$[cC]"))) {
                     m_timerStateQuery.setInterval(response.contains("Enable") ? 1000 : m_settings->queryStateTime());
                 }
 
@@ -2620,7 +2629,7 @@ void frmMain::onConnectionDataReceived(QString data)
 
                     // Check transfer complete (last row always blank, last command row = rowcount - 2)
                     if ((m_fileProcessedCommandIndex == m_currentModel->rowCount() - 2) ||
-                        uncomment.contains(QRegExp("(M0*2|M30)(?!\\d)")))
+                        uncomment.contains(QRegularExpression("(M0*2|M30)(?!\\d)")))
                     {
                         if (m_deviceState == DeviceRun) {
                             setSenderState(SenderStopping);
@@ -2637,7 +2646,7 @@ void frmMain::onConnectionDataReceived(QString data)
                 }
 
                 // Tool change mode
-                static QRegExp M6("(M0*6)(?!\\d)");
+                static QRegularExpression M6("(M0*6)(?!\\d)");
                 if ((m_senderState == SenderPausing) && uncomment.contains(M6)) {
 
                     response.clear();
@@ -3547,7 +3556,7 @@ void frmMain::preloadSettings()
     QSettings set;
     set.beginGroup("General");
 
-    qApp->setStyleSheet(QString(qApp->styleSheet()).replace(QRegExp("font-size:\\s*\\d+"), "font-size: "
+    qApp->setStyleSheet(QString(qApp->styleSheet()).replace(QRegularExpression("font-size:\\s*\\d+"), "font-size: "
         + set.value("fontSize", "9").toString()));
 
     set.endGroup();
@@ -3780,7 +3789,7 @@ void frmMain::storeSettings()
     ShortcutsMap m;
     QByteArray ba;
     QDataStream s(&ba, QIODevice::WriteOnly);
-    QList<QAction*> acts = findChildren<QAction*>(QRegExp("act.*"));
+    QList<QAction*> acts = findChildren<QAction*>(QRegularExpression("act.*"));
 
     foreach (QAction *a, acts) m[a->objectName()] = a->shortcuts();
     s << m;
@@ -3932,7 +3941,7 @@ void frmMain::restoreSettings()
             pick->setColor(QColor(set->value(pick->objectName().mid(3), "black").toString()));
         }
     } else {
-        m_settings->setShortcuts(findChildren<QAction*>(QRegExp("act.*")));
+        m_settings->setShortcuts(findChildren<QAction*>(QRegularExpression("act.*")));
         m_settings->setDefaultSettings();
     }
 
@@ -4059,7 +4068,9 @@ void frmMain::restoreSettings()
     }
 
     // Shortcuts
+#if QT_VERSION_MAJOR < 6
     qRegisterMetaTypeStreamOperators<ShortcutsMap>("ShortcutsMap");
+#endif
 
     ShortcutsMap m;
     QByteArray ba = set->value("shortcuts").toByteArray();
@@ -4236,7 +4247,7 @@ void frmMain::applySettings()
     applyTheme();
 
     // Apply font size QWidget {font-size: 8pt}
-    qApp->setStyleSheet(QString(qApp->styleSheet()).replace(QRegExp(
+    qApp->setStyleSheet(QString(qApp->styleSheet()).replace(QRegularExpression(
         "QWidget \\{font-size: \\d+pt\\}"),
         QString("QWidget {font-size: %1pt}").arg(m_settings->fontSize()))
     );
@@ -4265,7 +4276,7 @@ void frmMain::applySettings()
     ui->dockUser->setMaximumWidth(panelWidth + ui->scrollArea->verticalScrollBar()->width());
 
     // Update shortcuts
-    QList<QAction*> acts = findChildren<QAction*>(QRegExp("act.*"));
+    QList<QAction*> acts = findChildren<QAction*>(QRegularExpression("act.*"));
     QTableWidget *shortcuts = m_settings->shortcuts();
 
     for (int i = 0; i < shortcuts->rowCount(); i++) {
@@ -4350,7 +4361,7 @@ void frmMain::applySettings()
     ui->slbSpindle->setMinimum(m_settings->spindleSpeedMin());
     ui->slbSpindle->setMaximum(m_settings->spindleSpeedMax());
 
-    ui->cboCommand->setAutoCompletion(m_settings->autoCompletion());
+    ui->cboCommand->setEditable(m_settings->autoCompletion());
 
     ui->lblPosA->setVisible(m_settings->axisAEnabled());
     ui->txtWPosA->setVisible(m_settings->axisAEnabled());
@@ -4620,7 +4631,7 @@ void frmMain::loadPlugins()
                     layout1->addWidget(bw);
                     bw->setLayout(layout2);
                     layout2->addWidget(w);
-                    layout2->setMargin(0);
+                    layout2->setContentsMargins(0, 0, 0, 0);
                     connect(box, &QGroupBox::toggled, bw, &QWidget::setVisible);
 
                     // Add panel to user window
@@ -4653,7 +4664,7 @@ void frmMain::loadPlugins()
                     layout1->setContentsMargins(m);
                     frame->setLayout(layout2);
                     layout2->addWidget(w);
-                    layout2->setMargin(0);
+                    layout2->setContentsMargins(0, 0, 0, 0);
 
                     // Add to main form
                     this->addDockWidget(Qt::LeftDockWidgetArea, dock);
@@ -5115,15 +5126,15 @@ frmMain::SendCommandResult frmMain::sendCommand(QString command, int tableIndex,
     }
 
     // Set M2 & M30 commands sent flag
-    static QRegExp M230("(M0*2|M30|M0*6|M25)(?!\\d)");
-    static QRegExp M6("(M0*6)(?!\\d)");
+    static QRegularExpression M230("(M0*2|M30|M0*6|M25)(?!\\d)");
+    static QRegularExpression M6("(M0*6)(?!\\d)");
     if ((m_senderState == SenderTransferring) && uncomment.contains(M230)) {
         if (!uncomment.contains(M6) || m_settings->toolChangeUseCommands() || m_settings->toolChangePause()) setSenderState(SenderPausing);
     }
 
     // Refresh coordinates after a work-offset change. GRBL exposes offsets
     // through $#, while Marlin's portable query is M114.
-    static QRegExp G92("(G92|G10)(?!\\d)");
+    static QRegularExpression G92("(G92|G10)(?!\\d)");
     if (uncomment.contains(G92))
         sendCommand(m_marlinProtocol ? "M114" : "$#", -3, showInConsole, true);
 
@@ -5149,7 +5160,7 @@ void frmMain::sendNextFileCommands() {
     if (m_queue.length() > 0) return;
 
     auto command = m_currentModel->data().at(m_fileCommandIndex).command;
-    static QRegExp M230("(M0*2|M30|M0*6)(?!\\d)");
+    static QRegularExpression M230("(M0*2|M30|M0*6)(?!\\d)");
 
     while ((bufferLength() + command.length() + 1) <= BUFFERLENGTH
         && m_fileCommandIndex < m_currentModel->rowCount() - 1
@@ -5343,7 +5354,7 @@ void frmMain::ensureParserUpdateNotRunning()
 void frmMain::storeParserState()
 {
     m_storedParserStatus = ui->glwVisualizer->parserStatus().remove(
-                QRegExp("GC:|\\[|\\]|G[01234]\\s|M[0345]+\\s|\\sF[\\d\\.]+|\\sS[\\d\\.]+"));
+                QRegularExpression("GC:|\\[|\\]|G[01234]\\s|M[0345]+\\s|\\sF[\\d\\.]+|\\sS[\\d\\.]+"));
 }
 
 void frmMain::restoreParserState()

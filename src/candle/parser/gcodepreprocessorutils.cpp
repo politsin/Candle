@@ -5,7 +5,7 @@
 
 // Copyright 2015-2025 Hayrullin Denis Ravilevich
 
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QDebug>
 #include <QVector3D>
 #include "gcodepreprocessorutils.h"
@@ -21,12 +21,13 @@
 */
 QString GcodePreprocessorUtils::overrideSpeed(QString command, double speed, double *original)
 {
-    static QRegExp re("[Ff]([0-9.]+)");
+    static const QRegularExpression re("[Ff]([0-9.]+)");
+    const QRegularExpressionMatch match = re.match(command);
 
-    if (re.indexIn(command) != -1) {
-        command.replace(re, QString("F%1").arg(re.cap(1).toDouble() / 100 * speed));
+    if (match.hasMatch()) {
+        command.replace(re, QString("F%1").arg(match.captured(1).toDouble() / 100 * speed));
 
-        if (original) *original = re.cap(1).toDouble();
+        if (original) *original = match.captured(1).toDouble();
     }
 
     return command;
@@ -37,8 +38,8 @@ QString GcodePreprocessorUtils::overrideSpeed(QString command, double speed, dou
 */
 QString GcodePreprocessorUtils::removeComment(QString command)
 {
-    static QRegExp rx1("\\(+[^\\(]*\\)+");
-    static QRegExp rx2(";.*");
+    static const QRegularExpression rx1("\\(+[^\\(]*\\)+");
+    static const QRegularExpression rx2(";.*");
 
     // Remove any comments within ( parentheses ) using regex "\([^\(]*\)"
     if (command.contains('(')) command.remove(rx1);
@@ -58,23 +59,25 @@ QString GcodePreprocessorUtils::parseComment(QString command)
     // "(?<=\()[^\(\)]*|(?<=\;)[^;]*"
     // "(?<=\\()[^\\(\\)]*|(?<=\\;)[^;]*"
 
-    static QRegExp re("(\\([^\\(\\)]*\\)|;[^;].*)");
+    static const QRegularExpression re("(\\([^\\(\\)]*\\)|;[^;].*)");
+    const QRegularExpressionMatch match = re.match(command);
 
-    if (re.indexIn(command) != -1) {
-        return re.cap(1);
+    if (match.hasMatch()) {
+        return match.captured(1);
     }
     return "";
 }
 
 QString GcodePreprocessorUtils::truncateDecimals(int length, QString command)
 {
-    static QRegExp re("(\\d*\\.\\d*)");
+    static const QRegularExpression re("(\\d*\\.\\d*)");
     int pos = 0;
 
-    while ((pos = re.indexIn(command, pos)) != -1)
+    QRegularExpressionMatch match;
+    while ((pos = command.indexOf(re, pos, &match)) != -1)
     {
-        QString newNum = QString::number(re.cap(1).toDouble(), 'f', length);
-        command = command.left(pos) + newNum + command.mid(pos + re.matchedLength());
+        QString newNum = QString::number(match.captured(1).toDouble(), 'f', length);
+        command = command.left(pos) + newNum + command.mid(pos + match.capturedLength());
         pos += newNum.length() + 1;
     }
 
@@ -83,7 +86,7 @@ QString GcodePreprocessorUtils::truncateDecimals(int length, QString command)
 
 QString GcodePreprocessorUtils::removeAllWhitespace(QString command)
 {
-    static QRegExp rx("\\s");
+    static const QRegularExpression rx("\\s");
 
     return command.remove(rx);
 }
@@ -102,14 +105,12 @@ QList<float> GcodePreprocessorUtils::parseCodes(const QStringList &args, char co
 
 QList<int> GcodePreprocessorUtils::parseGCodes(QString command)
 {
-    static QRegExp re("[Gg]0*(\\d+)");
+    static const QRegularExpression re("[Gg]0*(\\d+)");
 
     QList<int> codes;
-    int pos = 0;
-
-    while ((pos = re.indexIn(command, pos)) != -1) {
-        codes.append(re.cap(1).toInt());
-        pos += re.matchedLength();
+    QRegularExpressionMatchIterator matches = re.globalMatch(command);
+    while (matches.hasNext()) {
+        codes.append(matches.next().captured(1).toInt());
     }
 
     return codes;
@@ -117,14 +118,12 @@ QList<int> GcodePreprocessorUtils::parseGCodes(QString command)
 
 QList<int> GcodePreprocessorUtils::parseMCodes(QString command)
 {
-    static QRegExp re("[Mm]0*(\\d+)");
+    static const QRegularExpression re("[Mm]0*(\\d+)");
 
     QList<int> codes;
-    int pos = 0;
-
-    while ((pos = re.indexIn(command, pos)) != -1) {
-        codes.append(re.cap(1).toInt());
-        pos += re.matchedLength();
+    QRegularExpressionMatchIterator matches = re.globalMatch(command);
+    while (matches.hasNext()) {
+        codes.append(matches.next().captured(1).toInt());
     }
 
     return codes;

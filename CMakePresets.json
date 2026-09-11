@@ -31,7 +31,7 @@
             "binaryDir": "${sourceDir}/build-qt6",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_PREFIX_PATH": "C:/Qt/6.11.2/msvc2022_64",
+        "CMAKE_PREFIX_PATH": "W:/Qt/6.11.2/msvc2022_64",
                 "CANDLE_ENABLE_LEGACY_SCRIPTS": "OFF",
                 "CMAKE_C_COMPILER": "cl.exe",
                 "CMAKE_CXX_COMPILER": "cl.exe"
