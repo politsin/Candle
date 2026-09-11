@@ -17,7 +17,7 @@ GRBL остаётся режимом по умолчанию и работает
 
 | Действие Candle | Команда Marlin |
 | --- | --- |
-| Home | `G28 X Y Z` |
+| Home button | `G28 X Y` (XY only; never moves Z) |
 | Пошаговый jog | `G21`, `G91`, короткий `G0`, затем `G90` |
 | Stop jog / Hold | `M410` (quickstop) |
 | Reset | `M112` (аварийный стоп) |

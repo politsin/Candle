@@ -1084,7 +1084,12 @@ void frmMain::on_cmdHome_clicked()
 {
     m_homing = true;
     m_updateSpindleSpeed = true;
-    sendCommand(m_marlinProtocol ? "G28 X Y Z" : "$H", -1, m_settings->showUICommands());
+    // Candle has one Home button. In the Marlin profile it is deliberately an
+    // XY-only home: this machine normally operates as a laser and its Z
+    // mechanism must never be moved implicitly. Full / Z homing remains an
+    // explicit console command (G28 Z or G28 X Y Z) after the relevant
+    // endstop has been checked with M119.
+    sendCommand(m_marlinProtocol ? "G28 X Y" : "$H", -1, m_settings->showUICommands());
 }
 
 void frmMain::on_cmdCheck_clicked(bool checked)
