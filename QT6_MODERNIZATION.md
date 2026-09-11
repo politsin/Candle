@@ -5,12 +5,30 @@
 The production branch currently builds with Qt 5.15.2 because Candle's legacy
 user-script ecosystem relies on QtScript.  The target for this track is Qt
 6.10.3, the current Qt 6.10 patch release at the time this document was added.
-The migration must retain all CNC features: visual GUI, `candle-cli`, GRBL,
-Marlin, plugins, G-code parser, height map and the localhost automation API.
+The migration must retain the operational CNC features: visual GUI,
+`candle-cli`, GRBL, Marlin, G-code parser, height map and the localhost
+automation API. It does **not** preserve the legacy QtScript plugin runtime.
 
-Do not replace the production Qt 5 build in place.  QtScript was removed from
+Do not replace the production Qt 5 build in place. QtScript was removed from
 Qt 6, so switching `find_package(Qt5 ...)` to Qt6 would silently remove a large
 part of the scripting/plugin feature set or fail to build.
+
+## Approved product boundary
+
+The Qt 6 build retires the four bundled QtScript plugins rather than porting
+their unrestricted access to the desktop application:
+
+| Legacy plugin | Decision | Replacement |
+| --- | --- | --- |
+| `camera` | Retire from Candle | External vision/camera service; calibrated results call the localhost API. |
+| `emergencybutton` | Retire | Physical E-stop is mandatory; emergency API/GUI action will be a small native feature. |
+| `usercommands` | Retire | Versioned JSON command profiles with the same arm and audit rules as API commands; no GUI `eval()`. |
+| `coordinatesystem` | Retire | It is GRBL-only G54..G57 / `G10 L20` UI and is not a valid Marlin contract. |
+
+This removes the need to port a generated QtScript binding layer for every Qt
+class. It also makes the future automation boundary explicit: Candle is the
+machine adapter, while vision, orchestration and decision making are external
+services.
 
 ## Measured migration surface
 
@@ -31,14 +49,13 @@ part of the scripting/plugin feature set or fail to build.
    `std::sort`, Windows version checks to `QOperatingSystemVersion`, and
    `QGLWidget` to `QOpenGLWidget`. These changes can be regression-tested on
    Qt 5 first.
-3. **Replace the script runtime.** Define a compatible `CandleScriptEngine`
-   adapter backed by `QJSEngine`. Keep the documented Candle script API
-   (`app`, `device`, `sender`, `settings`, `storage`, `vars`) stable. Write
-   compatibility tests using real existing scripts before removing QtScript.
-4. **Replace generated bindings.** The QtScript generator output cannot be
-   carried to Qt 6. Expose only the maintained Candle objects via typed
-   `QObject` wrappers rather than rebuilding a binding for every Qt class.
-   Preserve plugin loading through a small supported API.
+3. **Remove the legacy script runtime.** Exclude the QtScript editor, generated
+   bindings, `eval()` user-command path and the four plugin folders from the
+   Qt 6 package. Replace the emergency action and command profiles with small
+   native/API features.
+4. **Remove generated bindings.** The QtScript generator output is not carried
+   to Qt 6. The supported integration surface is the versioned local HTTP API,
+   not in-process scripting of arbitrary Qt objects.
 5. **Port CMake/deployment.** Move resources, translations and plugins to Qt 6
    CMake APIs and update `windeployqt` packaging for both `candle.exe` and
    `candle-cli.exe`.
