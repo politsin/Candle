@@ -227,6 +227,10 @@
         <translation>Нет соединения</translation>
     </message>
     <message>
+        <source>Connected</source>
+        <translation>Подключено</translation>
+    </message>
+    <message>
         <source>CONNECTED</source>
         <translation>ПОДКЛЮЧЕНО</translation>
     </message>

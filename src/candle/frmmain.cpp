@@ -235,12 +235,19 @@ void frmMain::initUi()
 
     ui->widgetHeightmapSettings->setVisible(false);
 
+    auto *connectionLayout = new QHBoxLayout();
+    connectionLayout->setContentsMargins(3, 2, 3, 2);
+    connectionLayout->setSpacing(6);
+    m_connectionIndicator = new QLabel(ui->grpState);
+    m_connectionIndicator->setObjectName("connectionIndicator");
+    m_connectionIndicator->setFixedSize(QFontMetrics(font()).height(), QFontMetrics(font()).height());
     m_connectionBanner = new QLabel(ui->grpState);
     m_connectionBanner->setObjectName("connectionBanner");
-    m_connectionBanner->setAlignment(Qt::AlignCenter);
     m_connectionBanner->setWordWrap(true);
-    m_connectionBanner->setMinimumHeight(76);
-    ui->verticalLayout_6->insertWidget(0, m_connectionBanner);
+    m_connectionBanner->setStyleSheet("QLabel { font-weight: normal; padding: 0; }");
+    connectionLayout->addWidget(m_connectionIndicator, 0, Qt::AlignTop);
+    connectionLayout->addWidget(m_connectionBanner, 1);
+    ui->verticalLayout_6->insertLayout(0, connectionLayout);
 
     ui->cmdXMinus->setBackColor(QColor(153, 180, 209));
     ui->cmdXPlus->setBackColor(ui->cmdXMinus->backColor());
@@ -5176,11 +5183,26 @@ void frmMain::sendNextFileCommands() {
         && !(!m_commands.isEmpty() && GcodePreprocessorUtils::removeComment(m_commands.last().command).contains(M230))
         )
     {
+        // Marlin does not consistently acknowledge comment-only lines. They
+        // are documentation for the operator, not controller commands, so
+        // complete them locally instead of blocking the sender on an "ok".
+        if (GcodePreprocessorUtils::removeComment(command).trimmed().isEmpty()) {
+            m_currentModel->setData(m_currentModel->index(m_fileCommandIndex, 2), GCodeItem::Processed);
+            m_fileProcessedCommandIndex = m_fileCommandIndex;
+            m_fileCommandIndex++;
+            command = m_currentModel->data().at(m_fileCommandIndex).command;
+            continue;
+        }
+
         m_currentModel->setData(m_currentModel->index(m_fileCommandIndex, 2), GCodeItem::Sent);
         sendCommand(command, m_fileCommandIndex, m_settings->showProgramCommands());
         m_fileCommandIndex++;
         command = m_currentModel->data().at(m_fileCommandIndex).command;
     }
+
+    if (m_fileCommandIndex >= m_currentModel->rowCount() - 1 && m_commands.isEmpty()
+        && m_senderState == SenderTransferring)
+        completeTransfer();
 }
 
 QString frmMain::evaluateCommand(QString command)
@@ -6861,11 +6883,9 @@ void frmMain::updateConnectionBanner()
 
     const QString protocol = m_marlinProtocol ? "Marlin" : "GRBL";
     const QString controllerState = m_statusCaptions.value(m_deviceState, tr("Unknown"));
-    m_connectionBanner->setText(
-        (connected ? tr("CONNECTED") : tr("NOT CONNECTED")) + "\n"
-        + transport + "\n"
-        + protocol + " · " + controllerState + " · " + jobState);
-    m_connectionBanner->setStyleSheet(connected
-        ? "QLabel { background: #0f6b35; color: white; border: 2px solid #0b4d27; border-radius: 5px; font-size: 13px; font-weight: 700; padding: 6px; }"
-        : "QLabel { background: #a51d2d; color: white; border: 2px solid #751420; border-radius: 5px; font-size: 13px; font-weight: 700; padding: 6px; }");
+    m_connectionBanner->setText(transport + " · " + protocol + "\n"
+        + (connected ? tr("Connected") : tr("Not connected")) + " · " + controllerState + " · " + jobState);
+    m_connectionIndicator->setStyleSheet(connected
+        ? "QLabel { background: #17813d; border: 1px solid #0f5a2a; border-radius: 1px; }"
+        : "QLabel { background: #c22c3d; border: 1px solid #851b28; border-radius: 1px; }");
 }

@@ -358,6 +358,7 @@ private:
     QMenu *m_tableMenu;
     QMessageBox* m_senderErrorBox;
     QLabel *m_connectionBanner;
+    QLabel *m_connectionIndicator;
 #if defined(Q_OS_WIN) && QT_VERSION_MAJOR < 6
     QWinTaskbarButton *m_taskBarButton;
     QWinTaskbarProgress *m_taskBarProgress;
