@@ -1532,7 +1532,9 @@ void frmMain::on_chkKeyboardControl_toggled(bool checked)
 
     // Store/restore coordinate system
     if (checked) {
-        sendCommand("$G", -2, m_settings->showUICommands());
+        // $G is GRBL-only. For Marlin a position report both confirms that
+        // the keyboard is targeting the connected controller and is safe.
+        sendCommand(m_marlinProtocol ? "M114" : "$G", -2, true);
     } else {
         if (m_absoluteCoordinates) sendCommand("G90", -1, m_settings->showUICommands());
     }
