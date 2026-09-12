@@ -310,7 +310,9 @@ void frmMain::initUi()
     static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, motorsGroup);
 
     // Native replacement for the old GRBL-only coordinatesystem script plugin.
-    auto *coordinatesGroup = new QGroupBox(tr("Work coordinates (GRBL)"), ui->scrollContentsUser);
+    // A compact title is intentional: the User dock has a fixed panel width
+    // and the previous translated title forced this whole column to widen.
+    auto *coordinatesGroup = new QGroupBox(tr("G54–G59 (GRBL)"), ui->scrollContentsUser);
     coordinatesGroup->setObjectName("grpUserCoordinates");
     coordinatesGroup->setCheckable(true);
     coordinatesGroup->setChecked(true);
@@ -342,10 +344,11 @@ void frmMain::initUi()
     addZeroButton("XYZ=0", "X0 Y0 Z0", 0, 3);
     static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, coordinatesGroup);
 
-    auto *emergencyGroup = new QGroupBox(tr("Emergency"), ui->scrollContentsUser);
-    emergencyGroup->setObjectName("grpUserEmergency");
-    emergencyGroup->setCheckable(true);
-    emergencyGroup->setChecked(true);
+    // Emergency controls belong next to the controller state, not among the
+    // configurable User actions. STOP takes a complete row, recovery actions
+    // stay below it.
+    auto *emergencyGroup = new QGroupBox(tr("Emergency"), ui->grpState);
+    emergencyGroup->setObjectName("grpStateEmergency");
     auto *emergencyLayout = new QGridLayout(emergencyGroup);
     emergencyLayout->setContentsMargins(6, 4, 6, 6);
     auto *stopButton = new QPushButton(tr("STOP"), emergencyGroup);
@@ -373,7 +376,7 @@ void frmMain::initUi()
         ui->txtStatus->setText(tr("Recovery command sent"));
     });
     connect(killButton, &QPushButton::clicked, this, &frmMain::on_cmdReset_clicked);
-    static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, emergencyGroup);
+    ui->verticalLayout_6->addWidget(emergencyGroup);
 
     m_userCommandsGroup = new QGroupBox(tr("User commands"), ui->scrollContentsUser);
     m_userCommandsGroup->setObjectName("grpUserCommands");

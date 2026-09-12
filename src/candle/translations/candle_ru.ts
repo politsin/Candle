@@ -135,6 +135,26 @@
         <translation>Моторы</translation>
     </message>
     <message>
+        <source>Camera</source>
+        <translation>Камера</translation>
+    </message>
+    <message>
+        <source>Device:</source>
+        <translation>Устройство:</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>Обновить</translation>
+    </message>
+    <message>
+        <source>Mirror horizontally</source>
+        <translation>Отразить по горизонтали</translation>
+    </message>
+    <message>
+        <source>G54–G59 (GRBL)</source>
+        <translation>G54–G59 (GRBL)</translation>
+    </message>
+    <message>
         <source>Disable %1 motor</source>
         <translation>Отключить мотор %1</translation>
     </message>
