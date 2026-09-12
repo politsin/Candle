@@ -286,6 +286,8 @@ void frmMain::initUi()
     // A plain checkable QGroupBox does not hide its contents on collapse and
     // therefore breaks stacking, sizing and saved panel state.
     auto *userLayout = static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout());
+    userLayout->removeWidget(ui->spacerUser);
+    ui->spacerUser->deleteLater();
     const auto makeUserPanel = [this](const QString &title, const QString &objectName) {
         auto *box = new QGroupBox(title, ui->scrollContentsUser);
         box->setObjectName(objectName);
@@ -362,17 +364,19 @@ void frmMain::initUi()
     addZeroButton("XYZ=0", "X0 Y0 Z0", 0, 3);
     userLayout->insertWidget(0, coordinatesGroup);
 
-    // Emergency controls belong next to the controller state, not among the
-    // configurable User actions. STOP takes a complete row, recovery actions
-    // stay below it.
-    auto *emergencyGroup = new QGroupBox(tr("Emergency"), ui->grpState);
-    emergencyGroup->setObjectName("grpStateEmergency");
-    auto *emergencyLayout = new QGridLayout(emergencyGroup);
+    // This is deliberately a plain child of State, not another titled panel:
+    // it reads as part of controller state rather than as a sibling below it.
+    auto *emergencyWidget = new QWidget(ui->grpState);
+    emergencyWidget->setObjectName("stateEmergencyControls");
+    auto *emergencyLayout = new QGridLayout(emergencyWidget);
     emergencyLayout->setContentsMargins(6, 4, 6, 6);
-    auto *stopButton = new QPushButton(tr("STOP"), emergencyGroup);
-    auto *recoverButton = new QPushButton(tr("RESET"), emergencyGroup);
-    auto *killButton = new QPushButton(tr("KILL"), emergencyGroup);
+    auto *stopButton = new QPushButton(tr("STOP"), emergencyWidget);
+    auto *recoverButton = new QPushButton(tr("RESET"), emergencyWidget);
+    auto *killButton = new QPushButton(tr("KILL"), emergencyWidget);
     stopButton->setMinimumHeight(3 * ui->cmdFileOpen->sizeHint().height());
+    QFont stopFont = stopButton->font();
+    stopFont.setPointSize(qMax(1, stopFont.pointSize() * 2));
+    stopButton->setFont(stopFont);
     stopButton->setToolTip(tr("Recoverable immediate stop: M410 for Marlin, feed hold for GRBL."));
     recoverButton->setToolTip(tr("Clear a recoverable stop: M999 for Marlin, resume for GRBL."));
     killButton->setToolTip(tr("Hard emergency kill: M112 for Marlin. Controller restart may be required."));
@@ -395,7 +399,7 @@ void frmMain::initUi()
         ui->txtStatus->setText(tr("Recovery command sent"));
     });
     connect(killButton, &QPushButton::clicked, this, &frmMain::on_cmdReset_clicked);
-    ui->verticalLayout_6->addWidget(emergencyGroup);
+    ui->verticalLayout_6->addWidget(emergencyWidget);
 
     const auto commandsPanel = makeUserPanel(tr("Commands"), "grpUserCommands");
     m_userCommandsGroup = commandsPanel.first;
@@ -409,6 +413,7 @@ void frmMain::initUi()
     connect(m_userCommandsConfigureButton, &QPushButton::clicked,
         this, &frmMain::onUserCommandsConfigureClicked);
     userLayout->insertWidget(0, m_userCommandsGroup);
+    userLayout->addStretch(1);
 
     ui->cmdXMinus->setBackColor(QColor(153, 180, 209));
     ui->cmdXPlus->setBackColor(ui->cmdXMinus->backColor());
