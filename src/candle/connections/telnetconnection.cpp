@@ -28,10 +28,10 @@ void TelnetConnection::connect()
 
 void TelnetConnection::disconnect()
 {
-    if (m_socket.isOpen())
-    {
-        m_socket.close();
-    }
+    // close() only handles an open socket. abort() also clears a socket that
+    // is stuck while connecting or closing, so a following connect() is real.
+    if (m_socket.state() != QAbstractSocket::UnconnectedState)
+        m_socket.abort();
 }
 
 bool TelnetConnection::isConnected() const

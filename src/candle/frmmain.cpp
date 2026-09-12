@@ -271,10 +271,19 @@ void frmMain::initUi()
     m_connectionRefreshButton->setToolTip(tr("Reconnect or update controller state"));
     connect(m_connectionRefreshButton, &QToolButton::clicked, this, [this] {
         if (!m_currentConnection) return;
-        if (m_currentConnection->isConnected())
+        if (m_currentConnection->isConnected()) {
             sendCommand(m_marlinProtocol ? "M114" : "?", -3, true, true);
-        else
-            m_currentConnection->connect();
+        } else {
+            // A TCP bridge can leave QTcpSocket in a Closing/Connecting state
+            // after Wi-Fi disappears. A plain connect() then has no effect.
+            // Reset that stale socket before opening a fresh connection.
+            Connection *connection = m_currentConnection;
+            connection->disconnect();
+            QTimer::singleShot(50, this, [this, connection] {
+                if (connection == m_currentConnection && !connection->isConnected())
+                    connection->connect();
+            });
+        }
         updateConnectionBanner();
     });
     connectionLayout->addWidget(m_connectionIndicator, 0, Qt::AlignTop);
