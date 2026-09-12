@@ -282,14 +282,30 @@ void frmMain::initUi()
     connectionLayout->addWidget(m_connectionRefreshButton, 0, Qt::AlignTop);
     ui->verticalLayout_6->insertLayout(0, connectionLayout);
 
-    // Native user commands replace the former plugin-only empty panel. Keep
-    // the layout grid-based so further hardware actions can be added without
-    // reviving the retired QtScript plugin runtime.
-    auto *motorsGroup = new QGroupBox(tr("Motors"), ui->scrollContentsUser);
-    motorsGroup->setObjectName("grpUserMotors");
-    motorsGroup->setCheckable(true);
-    motorsGroup->setChecked(true);
-    auto *motorsLayout = new QGridLayout(motorsGroup);
+    // All User panels use Candle's regular "group header + body" structure.
+    // A plain checkable QGroupBox does not hide its contents on collapse and
+    // therefore breaks stacking, sizing and saved panel state.
+    auto *userLayout = static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout());
+    const auto makeUserPanel = [this](const QString &title, const QString &objectName) {
+        auto *box = new QGroupBox(title, ui->scrollContentsUser);
+        box->setObjectName(objectName);
+        box->setCheckable(true);
+        box->setChecked(true);
+        box->setProperty("overrided", false);
+        box->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
+
+        auto *outer = new QVBoxLayout(box);
+        auto *body = new QWidget(box);
+        body->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
+        outer->addWidget(body);
+        connect(box, &QGroupBox::toggled, body, &QWidget::setVisible);
+        return QPair<QGroupBox *, QWidget *>(box, body);
+    };
+
+    // Native user commands replace the former plugin-only empty panel.
+    const auto motorsPanel = makeUserPanel(tr("Motors"), "grpUserMotors");
+    auto *motorsGroup = motorsPanel.first;
+    auto *motorsLayout = new QGridLayout(motorsPanel.second);
     motorsLayout->setContentsMargins(6, 4, 6, 6);
     motorsLayout->setHorizontalSpacing(4);
     motorsLayout->setVerticalSpacing(4);
@@ -311,16 +327,14 @@ void frmMain::initUi()
     motorsLayout->setColumnStretch(0, 1);
     motorsLayout->setColumnStretch(1, 1);
     motorsLayout->setColumnStretch(2, 1);
-    static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, motorsGroup);
+    userLayout->insertWidget(0, motorsGroup);
 
     // Native replacement for the old GRBL-only coordinatesystem script plugin.
     // A compact title is intentional: the User dock has a fixed panel width
     // and the previous translated title forced this whole column to widen.
-    auto *coordinatesGroup = new QGroupBox(tr("G54–G59 (GRBL)"), ui->scrollContentsUser);
-    coordinatesGroup->setObjectName("grpUserCoordinates");
-    coordinatesGroup->setCheckable(true);
-    coordinatesGroup->setChecked(true);
-    auto *coordinatesLayout = new QGridLayout(coordinatesGroup);
+    const auto coordinatesPanel = makeUserPanel(tr("G54–G59 (GRBL)"), "grpUserCoordinates");
+    auto *coordinatesGroup = coordinatesPanel.first;
+    auto *coordinatesLayout = new QGridLayout(coordinatesPanel.second);
     coordinatesLayout->setContentsMargins(6, 4, 6, 6);
     coordinatesLayout->setHorizontalSpacing(4);
     coordinatesLayout->setVerticalSpacing(4);
@@ -346,7 +360,7 @@ void frmMain::initUi()
     addZeroButton("Y=0", "Y0", 1);
     addZeroButton("Z=0", "Z0", 2);
     addZeroButton("XYZ=0", "X0 Y0 Z0", 0, 3);
-    static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, coordinatesGroup);
+    userLayout->insertWidget(0, coordinatesGroup);
 
     // Emergency controls belong next to the controller state, not among the
     // configurable User actions. STOP takes a complete row, recovery actions
@@ -358,6 +372,7 @@ void frmMain::initUi()
     auto *stopButton = new QPushButton(tr("STOP"), emergencyGroup);
     auto *recoverButton = new QPushButton(tr("RESET"), emergencyGroup);
     auto *killButton = new QPushButton(tr("KILL"), emergencyGroup);
+    stopButton->setMinimumHeight(3 * ui->cmdFileOpen->sizeHint().height());
     stopButton->setToolTip(tr("Recoverable immediate stop: M410 for Marlin, feed hold for GRBL."));
     recoverButton->setToolTip(tr("Clear a recoverable stop: M999 for Marlin, resume for GRBL."));
     killButton->setToolTip(tr("Hard emergency kill: M112 for Marlin. Controller restart may be required."));
@@ -382,13 +397,9 @@ void frmMain::initUi()
     connect(killButton, &QPushButton::clicked, this, &frmMain::on_cmdReset_clicked);
     ui->verticalLayout_6->addWidget(emergencyGroup);
 
-    m_userCommandsGroup = new QGroupBox(tr("User commands"), ui->scrollContentsUser);
-    m_userCommandsGroup->setObjectName("grpUserCommands");
-    m_userCommandsGroup->setCheckable(true);
-    m_userCommandsGroup->setChecked(true);
-    // A user-defined label must not dictate the width of the whole User dock.
-    m_userCommandsGroup->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
-    m_userCommandsLayout = new QGridLayout(m_userCommandsGroup);
+    const auto commandsPanel = makeUserPanel(tr("Commands"), "grpUserCommands");
+    m_userCommandsGroup = commandsPanel.first;
+    m_userCommandsLayout = new QGridLayout(commandsPanel.second);
     m_userCommandsLayout->setContentsMargins(6, 4, 6, 6);
     m_userCommandsLayout->setHorizontalSpacing(4);
     m_userCommandsLayout->setVerticalSpacing(4);
@@ -397,7 +408,7 @@ void frmMain::initUi()
     m_userCommandsConfigureButton->setToolTip(tr("Configure user commands, labels and icons"));
     connect(m_userCommandsConfigureButton, &QPushButton::clicked,
         this, &frmMain::onUserCommandsConfigureClicked);
-    static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, m_userCommandsGroup);
+    userLayout->insertWidget(0, m_userCommandsGroup);
 
     ui->cmdXMinus->setBackColor(QColor(153, 180, 209));
     ui->cmdXPlus->setBackColor(ui->cmdXMinus->backColor());
