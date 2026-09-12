@@ -6725,9 +6725,30 @@ bool frmMain::eventFilter(QObject *obj, QEvent *event)
                                            << ui->cmdZMinus << ui->cmdZPlus
                                            << ui->cmdAMinus << ui->cmdAPlusX << ui->cmdAPlusY;
 
+            int matchedIndex = -1;
             for (int i = 0; i < acts.count(); i++) {
-                const bool match = acts.at(i)->shortcut().matches(ks) == QKeySequence::ExactMatch;
-                if (!match) continue;
+                if (acts.at(i)->shortcut().matches(ks) == QKeySequence::ExactMatch) {
+                    matchedIndex = i;
+                    break;
+                }
+            }
+
+            // A NumPad with NumLock off is reported as cursor keys by Qt.
+            // Support both that mode and ordinary cursor keys explicitly.
+            if (matchedIndex < 0) {
+                switch (ev->key()) {
+                case Qt::Key_Left:     matchedIndex = 0; break; // X-
+                case Qt::Key_Right:    matchedIndex = 1; break; // X+
+                case Qt::Key_Down:     matchedIndex = 2; break; // Y-
+                case Qt::Key_Up:       matchedIndex = 3; break; // Y+
+                case Qt::Key_PageDown: matchedIndex = 4; break; // Z-
+                case Qt::Key_PageUp:   matchedIndex = 5; break; // Z+
+                default: break;
+                }
+            }
+
+            if (matchedIndex >= 0) {
+                const int i = matchedIndex;
 
                 // Take ownership of the matching NumPad key. Otherwise the
                 // focused QScrollArea treats it as a navigation/scroll key.
