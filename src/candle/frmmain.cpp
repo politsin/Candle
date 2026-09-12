@@ -6689,13 +6689,16 @@ void frmMain::scrollToTableIndex(QModelIndex index)
 
 bool frmMain::eventFilter(QObject *obj, QEvent *event)
 {
-    if (obj->inherits("QWidgetWindow") && !m_settings->isVisible()) {
+    Q_UNUSED(obj)
+    if (isActiveWindow() && !m_settings->isVisible()) {
 
         // Jog on keyboard control
         QKeySequence ks;
-        QKeyEvent *ev = static_cast<QKeyEvent*>(event);
+        QKeyEvent *ev = nullptr;
 
-        if ((event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyRelease)) {
+        if (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress
+            || event->type() == QEvent::KeyRelease) {
+            ev = static_cast<QKeyEvent*>(event);
             if (ev->key() == Qt::Key_Shift) {
                 ks = QKeySequence(Qt::ShiftModifier);
             } else if (ev->key() == Qt::Key_Control) {
@@ -6707,8 +6710,8 @@ bool frmMain::eventFilter(QObject *obj, QEvent *event)
             }
         }
 
-        if ((m_senderState != SenderTransferring) && (m_senderState != SenderStopping)
-            && ui->chkKeyboardControl->isChecked() && !ev->isAutoRepeat())
+        if (ev && (m_senderState != SenderTransferring) && (m_senderState != SenderStopping)
+            && ui->chkKeyboardControl->isChecked())
         {
             static QList<QAction*> acts;
             if (acts.isEmpty()) acts << ui->actJogXMinus << ui->actJogXPlus
@@ -6723,20 +6726,28 @@ bool frmMain::eventFilter(QObject *obj, QEvent *event)
                                            << ui->cmdAMinus << ui->cmdAPlusX << ui->cmdAPlusY;
 
             for (int i = 0; i < acts.count(); i++) {
-                if ((!buttons.at(i)->isDown()) && (event->type() == QEvent::ShortcutOverride)) {
-                    if (acts.at(i)->shortcut().matches(ks) == QKeySequence::ExactMatch) {
+                const bool match = acts.at(i)->shortcut().matches(ks) == QKeySequence::ExactMatch;
+                if (!match) continue;
+
+                // Take ownership of the matching NumPad key. Otherwise the
+                // focused QScrollArea treats it as a navigation/scroll key.
+                if (event->type() == QEvent::ShortcutOverride) {
+                    ev->accept();
+                    return true;
+                }
+                if (event->type() == QEvent::KeyPress) {
+                    if (!buttons.at(i)->isDown() && !ev->isAutoRepeat()) {
                         buttons.at(i)->pressed();
                         buttons.at(i)->setDown(true);
                     }
-                } else if (buttons.at(i)->isDown() && (event->type() == QEvent::KeyRelease)) {
-                    if ((acts.at(i)->shortcut().matches(ks) == QKeySequence::ExactMatch)
-                        || (acts.at(i)->shortcut().toString().contains(ks.toString()))
-                        || (ks.toString().contains(acts.at(i)->shortcut().toString()))
-                        )
-                    {
-                        buttons.at(i)->released();
-                        buttons.at(i)->setDown(false);
-                    }
+                    ev->accept();
+                    return true;
+                }
+                if (event->type() == QEvent::KeyRelease && buttons.at(i)->isDown()) {
+                    buttons.at(i)->released();
+                    buttons.at(i)->setDown(false);
+                    ev->accept();
+                    return true;
                 }
             }
         }
