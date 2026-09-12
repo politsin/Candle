@@ -6338,7 +6338,9 @@ void frmMain::updateControlsState() {
 
     updateConnectionBanner();
 
-    ui->grpState->setEnabled(portOpened);
+    // State is informational. Keep it enabled while the controller is offline
+    // so its refresh button can initiate a new Wi-Fi/serial connection.
+    ui->grpState->setEnabled(true);
     ui->grpControl->setEnabled(portOpened);
     ui->widgetSpindle->setEnabled(portOpened);
     const bool motorDisableAvailable = portOpened && m_resetCompleted
