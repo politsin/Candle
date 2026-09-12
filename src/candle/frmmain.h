@@ -79,6 +79,7 @@ class QGridLayout;
 class QIcon;
 class QDockWidget;
 class CameraWidget;
+class QCheckBox;
 
 struct CommandAttributes {
     int length;
@@ -370,11 +371,14 @@ private:
     QMessageBox* m_senderErrorBox;
     QLabel *m_connectionBanner;
     QLabel *m_connectionIndicator;
+    QToolButton *m_connectionRefreshButton;
     QList<QPushButton *> m_motorDisableButtons;
     QList<QPushButton *> m_coordinateButtons;
     int m_grblWorkCoordinate = 54;
     QDockWidget *m_cameraDock = nullptr;
     CameraWidget *m_cameraWidget = nullptr;
+    QComboBox *m_cameraSettingsDevice = nullptr;
+    QCheckBox *m_cameraSettingsMirror = nullptr;
     QGroupBox *m_userCommandsGroup;
     QGridLayout *m_userCommandsLayout;
     QPushButton *m_userCommandsConfigureButton;
@@ -605,6 +609,7 @@ private:
     void updateSliderProgramMaxValue();
     void updateConnectionBanner();
     void createNativeCameraDock();
+    void createNativeCameraSettings();
     void resetTableSelection();
     void adjustButtonIconColors();
 

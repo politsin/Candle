@@ -59,6 +59,13 @@ error, and the latest 100 sent/received controller lines.  It is the primary
 diagnostic endpoint.  It is deliberately suitable for collecting into logs or
 a time-series system.
 
+`GET /api/v1/camera/devices` lists the camera devices visible to the native
+Qt6 Camera dock. It is read-only and does not need a controller connection.
+
+`POST /api/v1/camera/select` selects a camera for the native preview. Send
+`{ "id": "..." }` with an ID returned by the device list. It never sends a
+machine command.
+
 `POST /api/v1/test/connection` queues only safe inspection commands:
 
 * Marlin: `M115`, `M114`, `M119`;

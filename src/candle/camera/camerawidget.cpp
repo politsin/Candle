@@ -35,6 +35,23 @@ CameraWidget::CameraWidget(QWidget *parent) : QWidget(parent) {
 
 CameraWidget::~CameraWidget() { stopCamera(); }
 
+QStringList CameraWidget::deviceNames() const {
+    QStringList result;
+    for (const auto &device : QMediaDevices::videoInputs()) result << device.description();
+    return result;
+}
+
+QByteArray CameraWidget::currentDeviceId() const { return m_devices->currentData().toByteArray(); }
+
+void CameraWidget::setCurrentDeviceId(const QByteArray &id) {
+    const int index = m_devices->findData(id);
+    if (index >= 0) m_devices->setCurrentIndex(index);
+}
+
+bool CameraWidget::mirrored() const { return m_mirror->isChecked(); }
+void CameraWidget::setMirrored(const bool value) { m_mirror->setChecked(value); }
+void CameraWidget::refresh() { refreshDevices(); }
+
 void CameraWidget::refreshDevices() {
     const QByteArray current = m_devices->currentData().toByteArray();
     QSignalBlocker blocker(m_devices);

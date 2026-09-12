@@ -10,6 +10,7 @@
 #include <QTextCursor>
 #include <QMessageBox>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QScrollBar>
 #include <QShortcut>
 #include <QAction>
@@ -49,6 +50,8 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUuid>
+#include <QMediaDevices>
+#include <QCameraDevice>
 #include <QtCore5Compat/QRegExp>
 #include <QRegularExpression>
 #include <algorithm>
@@ -248,6 +251,7 @@ void frmMain::initUi()
 
     ui->widgetHeightmapSettings->setVisible(false);
     createNativeCameraDock();
+    createNativeCameraSettings();
 
     auto *connectionLayout = new QHBoxLayout();
     connectionLayout->setContentsMargins(3, 2, 3, 2);
@@ -257,10 +261,21 @@ void frmMain::initUi()
     m_connectionIndicator->setFixedSize(QFontMetrics(font()).height(), QFontMetrics(font()).height());
     m_connectionBanner = new QLabel(ui->grpState);
     m_connectionBanner->setObjectName("connectionBanner");
-    m_connectionBanner->setWordWrap(true);
     m_connectionBanner->setStyleSheet("QLabel { font-weight: normal; padding: 0; }");
+    m_connectionRefreshButton = new QToolButton(ui->grpState);
+    m_connectionRefreshButton->setText("↻");
+    m_connectionRefreshButton->setToolTip(tr("Reconnect or update controller state"));
+    connect(m_connectionRefreshButton, &QToolButton::clicked, this, [this] {
+        if (!m_currentConnection) return;
+        if (m_currentConnection->isConnected())
+            sendCommand(m_marlinProtocol ? "M114" : "?", -3, true, true);
+        else
+            m_currentConnection->connect();
+        updateConnectionBanner();
+    });
     connectionLayout->addWidget(m_connectionIndicator, 0, Qt::AlignTop);
     connectionLayout->addWidget(m_connectionBanner, 1);
+    connectionLayout->addWidget(m_connectionRefreshButton, 0, Qt::AlignTop);
     ui->verticalLayout_6->insertLayout(0, connectionLayout);
 
     // Native user commands replace the former plugin-only empty panel. Keep
@@ -331,14 +346,33 @@ void frmMain::initUi()
     emergencyGroup->setObjectName("grpUserEmergency");
     emergencyGroup->setCheckable(true);
     emergencyGroup->setChecked(true);
-    auto *emergencyLayout = new QVBoxLayout(emergencyGroup);
+    auto *emergencyLayout = new QGridLayout(emergencyGroup);
     emergencyLayout->setContentsMargins(6, 4, 6, 6);
-    auto *emergencyButton = new QPushButton(tr("EMERGENCY STOP"), emergencyGroup);
-    emergencyButton->setMinimumHeight(34);
-    emergencyButton->setToolTip(tr("Immediately stop the controller. Marlin uses M112."));
-    emergencyButton->setStyleSheet("QPushButton { background:#c62828; color:white; border:1px solid #8e0000; border-radius:3px; } QPushButton:pressed { background:#8e0000; }");
-    emergencyLayout->addWidget(emergencyButton);
-    connect(emergencyButton, &QPushButton::clicked, this, &frmMain::on_cmdReset_clicked);
+    auto *stopButton = new QPushButton(tr("STOP"), emergencyGroup);
+    auto *recoverButton = new QPushButton(tr("RESET"), emergencyGroup);
+    auto *killButton = new QPushButton(tr("KILL"), emergencyGroup);
+    stopButton->setToolTip(tr("Recoverable immediate stop: M410 for Marlin, feed hold for GRBL."));
+    recoverButton->setToolTip(tr("Clear a recoverable stop: M999 for Marlin, resume for GRBL."));
+    killButton->setToolTip(tr("Hard emergency kill: M112 for Marlin. Controller restart may be required."));
+    stopButton->setStyleSheet("QPushButton { background:#d32f2f; color:white; border:1px solid #8e0000; border-radius:3px; } QPushButton:pressed { background:#8e0000; }");
+    killButton->setStyleSheet("QPushButton { background:#7f0000; color:white; border:1px solid #500000; border-radius:3px; } QPushButton:pressed { background:#500000; }");
+    emergencyLayout->addWidget(stopButton, 0, 0, 1, 2);
+    emergencyLayout->addWidget(recoverButton, 1, 0);
+    emergencyLayout->addWidget(killButton, 1, 1);
+    emergencyLayout->setColumnStretch(0, 1);
+    emergencyLayout->setColumnStretch(1, 1);
+    connect(stopButton, &QPushButton::clicked, this, [this] {
+        if (!m_currentConnection || !m_currentConnection->isConnected()) return;
+        m_currentConnection->send(m_marlinProtocol ? "M410" : "!");
+        m_commands.clear(); m_queue.clear(); setSenderState(SenderStopped);
+        ui->txtStatus->setText(tr("Recoverable stop sent"));
+    });
+    connect(recoverButton, &QPushButton::clicked, this, [this] {
+        if (!m_currentConnection || !m_currentConnection->isConnected()) return;
+        m_currentConnection->send(m_marlinProtocol ? "M999" : "~");
+        ui->txtStatus->setText(tr("Recovery command sent"));
+    });
+    connect(killButton, &QPushButton::clicked, this, &frmMain::on_cmdReset_clicked);
     static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, emergencyGroup);
 
     m_userCommandsGroup = new QGroupBox(tr("User commands"), ui->scrollContentsUser);
@@ -431,6 +465,55 @@ void frmMain::createNativeCameraDock()
     m_cameraDock->setWidget(m_cameraWidget);
     addDockWidget(Qt::RightDockWidgetArea, m_cameraDock);
     m_cameraDock->hide();
+}
+
+void frmMain::createNativeCameraSettings()
+{
+    auto *box = new QGroupBox(tr("Camera"), m_settings);
+    auto *layout = new QGridLayout(box);
+    auto *deviceLabel = new QLabel(tr("Device:"), box);
+    m_cameraSettingsDevice = new QComboBox(box);
+    auto *refresh = new QPushButton(tr("Refresh"), box);
+    m_cameraSettingsMirror = new QCheckBox(tr("Mirror horizontally"), box);
+    layout->addWidget(deviceLabel, 0, 0);
+    layout->addWidget(m_cameraSettingsDevice, 0, 1);
+    layout->addWidget(refresh, 0, 2);
+    layout->addWidget(m_cameraSettingsMirror, 1, 1, 1, 2);
+    m_settings->addCustomSettings(box);
+
+    const auto refreshList = [this] {
+        const QByteArray selected = m_cameraSettingsDevice->currentData().toByteArray();
+        QSignalBlocker blocker(m_cameraSettingsDevice);
+        m_cameraSettingsDevice->clear();
+        const auto devices = QMediaDevices::videoInputs();
+        for (const auto &device : devices)
+            m_cameraSettingsDevice->addItem(device.description(), device.id());
+        const int index = m_cameraSettingsDevice->findData(selected);
+        if (index >= 0) m_cameraSettingsDevice->setCurrentIndex(index);
+    };
+    refreshList();
+    connect(refresh, &QPushButton::clicked, this, refreshList);
+    connect(this, &frmMain::settingsLoaded, this, [this, refreshList] {
+        refreshList();
+        auto *settings = m_storage.group("Camera");
+        int index = m_cameraSettingsDevice->findData(settings->value("device", QByteArray()).toByteArray());
+        if (index < 0 && m_cameraSettingsDevice->count()) index = 0;
+        m_cameraSettingsDevice->setCurrentIndex(index);
+        m_cameraSettingsMirror->setChecked(settings->value("mirror", false).toBool());
+        m_cameraWidget->setCurrentDeviceId(m_cameraSettingsDevice->currentData().toByteArray());
+        m_cameraWidget->setMirrored(m_cameraSettingsMirror->isChecked());
+        delete settings;
+    });
+    connect(this, &frmMain::settingsAccepted, this, [this] {
+        m_cameraWidget->setCurrentDeviceId(m_cameraSettingsDevice->currentData().toByteArray());
+        m_cameraWidget->setMirrored(m_cameraSettingsMirror->isChecked());
+    });
+    connect(this, &frmMain::settingsAboutToSave, this, [this] {
+        auto *settings = m_storage.group("Camera");
+        settings->setValue("device", m_cameraSettingsDevice->currentData());
+        settings->setValue("mirror", m_cameraSettingsMirror->isChecked());
+        delete settings;
+    });
 }
 
 void frmMain::initDrawers()
@@ -1268,6 +1351,10 @@ void frmMain::on_cmdCheck_clicked(bool checked)
 
 void frmMain::on_cmdReset_clicked()
 {
+    if (!m_currentConnection || !m_currentConnection->isConnected()) {
+        ui->txtStatus->setText(tr("Controller is not connected"));
+        return;
+    }
     if (m_marlinProtocol) {
         // Marlin has no GRBL soft reset. M112 is deliberately an emergency
         // stop; recovery requires the controller's normal reset procedure.
@@ -5238,7 +5325,20 @@ QJsonObject frmMain::handleAutomationRequest(const QString &method, const QStrin
     }
     if (method == "GET" && (path == "/api/v1/status" || path == "/api/v1/events"))
         return automationStatus();
-    if (method != "POST") return automationError("Use GET /healthz, GET /readyz, GET /api/v1/status, or POST /api/v1/*");
+    if (method == "GET" && path == "/api/v1/camera/devices") {
+        QJsonArray devices;
+        for (const auto &device : QMediaDevices::videoInputs())
+            devices.append(QJsonObject{{"id", QString::fromLatin1(device.id())}, {"name", device.description()}});
+        return QJsonObject{{"ok", true}, {"devices", devices},
+                           {"preview_active", m_cameraWidget && m_cameraWidget->hasFrame()}};
+    }
+    if (path == "/api/v1/camera/select") {
+        const QByteArray id = request.value("id").toString().toLatin1();
+        if (id.isEmpty()) return automationError("camera select requires a device id");
+        m_cameraWidget->setCurrentDeviceId(id);
+        return QJsonObject{{"ok", true}, {"preview_active", m_cameraWidget->hasFrame()}};
+    }
+    if (method != "POST") return automationError("Use GET /healthz, /readyz, /api/v1/status, /api/v1/camera/devices, or POST /api/v1/*");
 
     if (path == "/api/v1/arm") {
         const int seconds = qBound(5, request.value("seconds").toInt(60), 300);
@@ -7211,29 +7311,19 @@ void frmMain::updateConnectionBanner()
     QString transport;
     switch (m_settings->connectionType()) {
     case ConnectionType::SerialPort:
-        transport = m_settings->port() + " · " + QString::number(m_settings->baud());
+        transport = tr("Serial");
         break;
     case ConnectionType::Telnet:
-        transport = tr("Wi-Fi") + " · " + m_settings->telnetAddress();
+        transport = tr("Wi-Fi");
         break;
     case ConnectionType::WebSocket:
         transport = tr("WebSocket");
         break;
     }
 
-    QString jobState;
-    switch (m_senderState) {
-    case SenderTransferring: jobState = tr("Running"); break;
-    case SenderPausing: jobState = tr("Pausing"); break;
-    case SenderPaused: jobState = tr("Paused"); break;
-    case SenderStopping: jobState = tr("Stopping"); break;
-    case SenderChangingTool: jobState = tr("Tool change"); break;
-    default: jobState = tr("Idle"); break;
-    }
-
     const QString protocol = m_marlinProtocol ? "Marlin" : "GRBL";
-    m_connectionBanner->setText(transport + "\n" + protocol + " · "
-        + (connected ? jobState : tr("Offline")));
+    m_connectionBanner->setText(transport + " · " + protocol);
+    m_connectionRefreshButton->setEnabled(m_currentConnection);
     m_connectionIndicator->setStyleSheet(connected
         ? "QLabel { background: #17813d; border: 1px solid #0f5a2a; border-radius: 1px; }"
         : "QLabel { background: #c22c3d; border: 1px solid #851b28; border-radius: 1px; }");

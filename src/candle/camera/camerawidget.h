@@ -18,6 +18,13 @@ class CameraWidget final : public QWidget {
 public:
     explicit CameraWidget(QWidget *parent = nullptr);
     ~CameraWidget() override;
+    bool hasFrame() const { return !m_frame.isNull(); }
+    QStringList deviceNames() const;
+    QByteArray currentDeviceId() const;
+    void setCurrentDeviceId(const QByteArray &id);
+    bool mirrored() const;
+    void setMirrored(bool value);
+    void refresh();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
