@@ -65,6 +65,7 @@
 #include "connections/serialportconnection.h"
 #include "connections/telnetconnection.h"
 #include "connections/websocketconnection.h"
+#include "camera/camerawidget.h"
 
 frmMain::frmMain(QWidget *parent) : QMainWindow(parent), ui(new Ui::frmMain)
 {
@@ -246,6 +247,7 @@ void frmMain::initUi()
     setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
 
     ui->widgetHeightmapSettings->setVisible(false);
+    createNativeCameraDock();
 
     auto *connectionLayout = new QHBoxLayout();
     connectionLayout->setContentsMargins(3, 2, 3, 2);
@@ -291,6 +293,53 @@ void frmMain::initUi()
     motorsLayout->setColumnStretch(1, 1);
     motorsLayout->setColumnStretch(2, 1);
     static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, motorsGroup);
+
+    // Native replacement for the old GRBL-only coordinatesystem script plugin.
+    auto *coordinatesGroup = new QGroupBox(tr("Work coordinates (GRBL)"), ui->scrollContentsUser);
+    coordinatesGroup->setObjectName("grpUserCoordinates");
+    coordinatesGroup->setCheckable(true);
+    coordinatesGroup->setChecked(true);
+    auto *coordinatesLayout = new QGridLayout(coordinatesGroup);
+    coordinatesLayout->setContentsMargins(6, 4, 6, 6);
+    coordinatesLayout->setHorizontalSpacing(4);
+    coordinatesLayout->setVerticalSpacing(4);
+    for (int column = 0; column < 3; ++column) coordinatesLayout->setColumnStretch(column, 1);
+    for (int coordinate = 54; coordinate <= 59; ++coordinate) {
+        auto *button = new QPushButton(QString("G%1").arg(coordinate), coordinatesGroup);
+        button->setProperty("coordinate", coordinate);
+        button->setCheckable(true);
+        button->setToolTip(tr("Select GRBL work coordinate G%1").arg(coordinate));
+        coordinatesLayout->addWidget(button, 0, coordinate - 54);
+        m_coordinateButtons.append(button);
+        connect(button, &QPushButton::clicked, this, &frmMain::onUserCoordinateSystemClicked);
+    }
+    const auto addZeroButton = [this, coordinatesLayout, coordinatesGroup](const QString &label, const QString &axes, int column, int span = 1) {
+        auto *button = new QPushButton(label, coordinatesGroup);
+        button->setProperty("axes", axes);
+        button->setToolTip(tr("Set the current GRBL work coordinate %1 to zero").arg(axes));
+        coordinatesLayout->addWidget(button, 1, column, 1, span);
+        m_coordinateButtons.append(button);
+        connect(button, &QPushButton::clicked, this, &frmMain::onUserSetWorkZeroClicked);
+    };
+    addZeroButton("X=0", "X0", 0);
+    addZeroButton("Y=0", "Y0", 1);
+    addZeroButton("Z=0", "Z0", 2);
+    addZeroButton("XYZ=0", "X0 Y0 Z0", 0, 3);
+    static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, coordinatesGroup);
+
+    auto *emergencyGroup = new QGroupBox(tr("Emergency"), ui->scrollContentsUser);
+    emergencyGroup->setObjectName("grpUserEmergency");
+    emergencyGroup->setCheckable(true);
+    emergencyGroup->setChecked(true);
+    auto *emergencyLayout = new QVBoxLayout(emergencyGroup);
+    emergencyLayout->setContentsMargins(6, 4, 6, 6);
+    auto *emergencyButton = new QPushButton(tr("EMERGENCY STOP"), emergencyGroup);
+    emergencyButton->setMinimumHeight(34);
+    emergencyButton->setToolTip(tr("Immediately stop the controller. Marlin uses M112."));
+    emergencyButton->setStyleSheet("QPushButton { background:#c62828; color:white; border:1px solid #8e0000; border-radius:3px; } QPushButton:pressed { background:#8e0000; }");
+    emergencyLayout->addWidget(emergencyButton);
+    connect(emergencyButton, &QPushButton::clicked, this, &frmMain::on_cmdReset_clicked);
+    static_cast<QVBoxLayout *>(ui->scrollContentsUser->layout())->insertWidget(0, emergencyGroup);
 
     m_userCommandsGroup = new QGroupBox(tr("User commands"), ui->scrollContentsUser);
     m_userCommandsGroup->setObjectName("grpUserCommands");
@@ -371,6 +420,17 @@ void frmMain::initUi()
     ui->slbSpindle->setChecked(true);
     connect(ui->slbSpindle, &SliderBox::valueUserChanged, this, &frmMain::onSlbSpindleValueUserChanged);
     connect(ui->slbSpindle, &SliderBox::valueChanged, this, &frmMain::onSlbSpindleValueChanged);
+}
+
+void frmMain::createNativeCameraDock()
+{
+    m_cameraDock = new QDockWidget(tr("Camera"), this);
+    m_cameraDock->setObjectName("dockCamera");
+    m_cameraDock->setAllowedAreas(Qt::AllDockWidgetAreas);
+    m_cameraWidget = new CameraWidget(m_cameraDock);
+    m_cameraDock->setWidget(m_cameraWidget);
+    addDockWidget(Qt::RightDockWidgetArea, m_cameraDock);
+    m_cameraDock->hide();
 }
 
 void frmMain::initDrawers()
@@ -2013,6 +2073,28 @@ void frmMain::onUserMotorDisableClicked()
     // The command is intentionally sent only from a deliberate GUI click.
     // It releases the specified Marlin stepper(s); it does not move an axis.
     sendCommand(button->property("gcode").toString(), -1, m_settings->showUICommands());
+}
+
+void frmMain::onUserCoordinateSystemClicked()
+{
+    if (m_marlinProtocol || m_senderState != SenderStopped) return;
+    auto *button = qobject_cast<QPushButton *>(sender());
+    if (!button) return;
+    m_grblWorkCoordinate = button->property("coordinate").toInt();
+    for (auto *candidate : m_coordinateButtons) {
+        if (candidate->property("coordinate").isValid())
+            candidate->setChecked(candidate == button);
+    }
+    sendCommand(QString("G%1").arg(m_grblWorkCoordinate), -1, m_settings->showUICommands());
+}
+
+void frmMain::onUserSetWorkZeroClicked()
+{
+    if (m_marlinProtocol || m_senderState != SenderStopped) return;
+    auto *button = qobject_cast<QPushButton *>(sender());
+    if (!button) return;
+    const QString axes = button->property("axes").toString();
+    sendCommand(QString("G10 L20 P%1 %2").arg(m_grblWorkCoordinate - 53).arg(axes), -1, m_settings->showUICommands());
 }
 
 void frmMain::onUserCommandClicked()
@@ -6136,6 +6218,8 @@ void frmMain::updateControlsState() {
     const bool motorDisableAvailable = portOpened && m_resetCompleted
         && m_senderState == SenderStopped && !m_sdRun;
     for (auto *button : m_motorDisableButtons) button->setEnabled(motorDisableAvailable);
+    const bool grblCoordinatesAvailable = motorDisableAvailable && !m_marlinProtocol;
+    for (auto *button : m_coordinateButtons) button->setEnabled(grblCoordinatesAvailable);
     const bool userCommandAvailable = portOpened && m_resetCompleted
         && m_senderState == SenderStopped && !m_sdRun;
     for (auto *button : m_userCommandButtons) button->setEnabled(userCommandAvailable);

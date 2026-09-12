@@ -77,6 +77,8 @@ class QPushButton;
 class QToolButton;
 class QGridLayout;
 class QIcon;
+class QDockWidget;
+class CameraWidget;
 
 struct CommandAttributes {
     int length;
@@ -254,6 +256,8 @@ private slots:
     void on_cmdAPlusY_released();
     void on_cmdStop_clicked();
     void onUserMotorDisableClicked();
+    void onUserCoordinateSystemClicked();
+    void onUserSetWorkZeroClicked();
     void onUserCommandClicked();
     void onUserCommandsConfigureClicked();
     void on_tblProgram_customContextMenuRequested(const QPoint &pos);
@@ -367,6 +371,10 @@ private:
     QLabel *m_connectionBanner;
     QLabel *m_connectionIndicator;
     QList<QPushButton *> m_motorDisableButtons;
+    QList<QPushButton *> m_coordinateButtons;
+    int m_grblWorkCoordinate = 54;
+    QDockWidget *m_cameraDock = nullptr;
+    CameraWidget *m_cameraWidget = nullptr;
     QGroupBox *m_userCommandsGroup;
     QGridLayout *m_userCommandsLayout;
     QPushButton *m_userCommandsConfigureButton;
@@ -596,6 +604,7 @@ private:
     bool eventFilter(QObject *obj, QEvent *event);
     void updateSliderProgramMaxValue();
     void updateConnectionBanner();
+    void createNativeCameraDock();
     void resetTableSelection();
     void adjustButtonIconColors();
 

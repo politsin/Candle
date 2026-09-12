@@ -15,15 +15,16 @@ part of the scripting/plugin feature set or fail to build.
 
 ## Approved product boundary
 
-The Qt 6 build retires the four bundled QtScript plugins rather than porting
-their unrestricted access to the desktop application:
+The Qt 6 build retires the unrestricted QtScript runtime. Its four bundled
+plugins are replaced with explicit native features or intentionally scoped
+away from the controller contract:
 
 | Legacy plugin | Decision | Replacement |
 | --- | --- | --- |
-| `camera` | Retire from Candle | External vision/camera service; calibrated results call the localhost API. |
-| `emergencybutton` | Retire | Physical E-stop is mandatory; emergency API/GUI action will be a small native feature. |
-| `usercommands` | Retire | Versioned JSON command profiles with the same arm and audit rules as API commands; no GUI `eval()`. |
-| `coordinatesystem` | Retire | It is GRBL-only G54..G57 / `G10 L20` UI and is not a valid Marlin contract. |
+| `camera` | Native Qt 6 dock | Live USB-camera preview, device selector, mirror and center reticle. Vision/calibration decisions remain external via the localhost API. |
+| `emergencybutton` | Native Qt 6 user-panel action | Red Emergency Stop button. Marlin sends `M112`; GRBL uses the existing reset path. A physical E-stop remains mandatory. |
+| `usercommands` | Native Qt 6 user-panel action | Persisted command buttons with labels and icons; no GUI `eval()` or arbitrary Qt object access. |
+| `coordinatesystem` | Native Qt 6 GRBL panel | `G54…G59` selector plus `G10 L20` work-zero actions; automatically unavailable for Marlin. |
 
 This removes the need to port a generated QtScript binding layer for every Qt
 class. It also makes the future automation boundary explicit: Candle is the
@@ -32,7 +33,7 @@ services.
 
 ## Measured migration surface
 
-* 46 direct `QScript*` references exist in the handwritten Candle sources.
+* The legacy build contained 46 direct `QScript*` references in handwritten Candle sources.
 * The legacy script binding generator contains about 45,000 `QScript*` source
   lines.  It exposes Qt/Candle objects to user scripts and is the main blocker.
 * 59 uses of Qt 5 APIs already deprecated or removed in Qt 6 were found,
