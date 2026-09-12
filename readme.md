@@ -1,10 +1,25 @@
+
+# Candle — Marlin / CNC fork
+
+Это форк [Denvi/Candle](https://github.com/Denvi/Candle) для нашего стенда с
+Marlin, лазером и ЧПУ. Оригинальный Candle остаётся совместимым с GRBL; ниже
+сохранена его исходная документация.
+
+## Что изменено в этом форке
+
+- **Marlin и Wi‑Fi.** Выбор протокола Marlin, подключение через Serial или
+  ESP32 Wi‑Fi/Telnet, корректные home/jog/stop-команды и понятный статус
+  соединения. Подробнее: [MARLIN.md](MARLIN.md).
+- **Слой автоматизации.** Локальный HTTP API для диагностики, подключения,
+  открытия G-code, чтения состояния и безопасного управления тестовым стендом.
+  Он рассчитан на интеграцию с ИИ и машинным зрением; API не доступен из сети.
+  Подробнее: [AUTOMATION.md](AUTOMATION.md).
+- **Qt 6.11.** Сборка переведена на актуальный Qt 6.11.2 без QtScript/Qt 5;
+  пользовательские команды реализованы нативно и настраиваются из интерфейса.
+
 Candle
 -----------
 GRBL controller application with G-Code visualizer written in Qt.
-
-This fork also adds Marlin support and a localhost-only automation API for
-diagnostics and CNC test stands; see [MARLIN.md](MARLIN.md) and
-[AUTOMATION.md](AUTOMATION.md).
 
 ![screenshot](/screenshots/screenshot_main_window.png)
 
