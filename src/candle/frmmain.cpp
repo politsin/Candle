@@ -242,6 +242,10 @@ void frmMain::initUi()
     ui->fraDropDevice->setVisible(false);
     ui->fraDropModification->setVisible(false);
     ui->fraDropUser->setVisible(false);
+    // This was a design-time expanding QGroupBox used only as a spacer. It
+    // renders as an unexplained empty rectangle in the User dock and can
+    // contribute a needless minimum width.
+    ui->spacerUser->setVisible(false);
 
     // Dock widgets
     setCorner(Qt::TopLeftCorner, Qt::LeftDockWidgetArea);
@@ -382,6 +386,8 @@ void frmMain::initUi()
     m_userCommandsGroup->setObjectName("grpUserCommands");
     m_userCommandsGroup->setCheckable(true);
     m_userCommandsGroup->setChecked(true);
+    // A user-defined label must not dictate the width of the whole User dock.
+    m_userCommandsGroup->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
     m_userCommandsLayout = new QGridLayout(m_userCommandsGroup);
     m_userCommandsLayout->setContentsMargins(6, 4, 6, 6);
     m_userCommandsLayout->setHorizontalSpacing(4);
@@ -4058,8 +4064,9 @@ void frmMain::rebuildUserCommands()
         button->setIcon(userCommandIcon(command.value("icon").toString()));
         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
         button->setIconSize(QSize(26, 26));
+        button->setMinimumWidth(0);
         button->setMinimumHeight(56);
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         button->setProperty("gcode", code);
         button->setToolTip(QString("%1\n%2").arg(label, code));
         connect(button, &QToolButton::clicked, this, &frmMain::onUserCommandClicked);
